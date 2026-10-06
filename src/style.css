@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+  body {
+    @apply bg-zinc-950 text-zinc-100 font-sans;
+  }
+  ::selection {
+    @apply bg-primary-600/60 text-white;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-primary-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-primary-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-zinc-700 bg-zinc-800/60 px-5 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-primary-500 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-icon {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-full text-zinc-400 transition hover:bg-zinc-800 hover:text-white disabled:opacity-40;
+  }
+  .field-input {
+    @apply w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-600/30;
+  }
+  .card-surface {
+    @apply rounded-xl border border-zinc-800/80 bg-zinc-900/70;
+  }
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}
+
+/* 进度条（input range） */
+input[type='range'].player-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    #dc2626 0%,
+    #dc2626 var(--progress, 0%),
+    #3f3f46 var(--progress, 0%),
+    #3f3f46 100%
+  );
+  outline: none;
+  cursor: pointer;
+}
+input[type='range'].player-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.35);
+  transition: transform 0.15s ease;
+}
+input[type='range'].player-range::-webkit-slider-thumb:hover {
+  transform: scale(1.25);
+}
+input[type='range'].player-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.35);
+}
+
+/* 歌词逐字高亮 */
+.word-active {
+  color: #fecaca;
+  font-weight: 600;
+}

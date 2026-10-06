@@ -1,0 +1,820 @@
+openapi: 3.0.3
+info:
+  title: NextMusic API
+  version: 1.2.0
+  description: |
+    NextMusic 查询服务，提供网易云音乐的歌曲搜索、歌曲/专辑/歌单信息、播放地址与歌词查询。
+
+    ### 通用约定
+    - 所有业务接口均为 `POST` 方法，请求体为 `application/json`（UTF-8）。
+    - 响应为统一信封结构：成功返回 `{ "code": 200, "data": ... }`；
+      失败返回 `{ "code": <HTTP状态码>, "message": "...", "data": null }`，响应中的 `code` 与 HTTP 状态码一致。
+    - 接口无需鉴权（无需 Token / Cookie）。
+
+    ### CORS 跨域
+    服务端已开启 CORS，允许任意来源访问（`Access-Control-Allow-Origin: *`），所有响应（含错误响应）均携带 CORS 头。
+    浏览器跨域调用前会自动发起 `OPTIONS` 预检请求，预检返回 `204 No Content`，响应头如下：
+
+    | 响应头 | 值 |
+    | --- | --- |
+    | `Access-Control-Allow-Origin` | `*` |
+    | `Access-Control-Allow-Methods` | GET, POST, PUT, PATCH, DELETE, OPTIONS |
+    | `Access-Control-Allow-Headers` | Content-Type, Authorization, X-Requested-With |
+    | `Access-Control-Max-Age` | 86400 |
+
+    预检由浏览器自动完成，客户端无需（也不应）手动调用 `OPTIONS`。
+
+    ### 媒体资源
+    接口返回的封面图（`picimg`）与音频直链（`url`）托管于网易云音乐 CDN（`*.music.126.net`），
+    不属于本服务的路径，可直接 `GET` 访问：封面图建议置空 `Referer`；
+    音频直链带签名 token、具有时效性，支持 `Range` 分段请求。
+servers:
+  - url: https://nextmusic.toubiec.cn
+    description: 生产环境
+tags:
+  - name: 歌曲
+    description: 歌曲搜索、信息、播放地址与歌词查询
+paths:
+  /api/search:
+    post:
+      tags:
+        - 歌曲
+      summary: 搜索
+      operationId: search
+      description: |
+        根据关键词搜索网易云音乐资源，支持分页（`limit` / `offset`）。
+        返回结构随 `type` 变化：`type=1`（单曲，默认）时 `data` 为 `{ songs, songCount }`，
+        歌曲项结构与 getSongInfo 的 `data` 完全一致；
+        其他 `type` 透传网易云原始搜索结果（资源复数名为数组键，计数键为「资源名 + Count」，
+        如 type=10 → `albums` / `albumCount`、type=100 → `artists` / `artistCount`、type=1000 → `playlists` / `playlistCount`）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+            example:
+              keyword: alan
+              type: 1
+              limit: 100
+              offset: 0
+              timestamp: 1791275481846
+              ip: 104.28.240.138
+      responses:
+        '200':
+          description: 搜索成功（响应示例为 type=1，实际共 343 项，此处截取前 2 项）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+              example:
+                code: 200
+                data:
+                  songs:
+                    - id: 506092035
+                      name: The Spectre
+                      free: false
+                      album: The Spectre
+                      singer: Alan Walker
+                      picimg: http://p2.music.126.net/P6XMbCPENqlMsvPDEGIQxg==/109951165982513700.jpg
+                      duration: '3:14'
+                      copyright: 1
+                      time: '2026/10/06 16:36:30'
+                    - id: 419594258
+                      name: Hymn For The Weekend（Remix）
+                      free: true
+                      album: Hymn For The Weekend [Remix]
+                      singer: Alan Walker/Coldplay
+                      picimg: http://p2.music.126.net/zx0EgLRhfOo-q906272T0Q==/3427177756044412.jpg
+                      duration: '3:50'
+                      copyright: 0
+                      time: '2026/10/06 16:36:30'
+                  songCount: 343
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/getAlbum:
+    post:
+      tags:
+        - 歌曲
+      summary: 获取专辑详情
+      operationId: getAlbum
+      description: |
+        根据专辑 ID 查询专辑信息（名称、封面、发行时间、歌手、简介）及专辑内全部歌曲。
+        歌曲项结构与 getSongInfo 的 `data` 一致，但实测可能缺少 `copyright` 字段。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SongBaseRequest'
+            example:
+              id: '394505804'
+              timestamp: 1791275758126
+              ip: 104.28.240.138
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlbumResponse'
+              example:
+                code: 200
+                data:
+                  id: 394505804
+                  name: GGEZ
+                  picUrl: https://p2.music.126.net/486EO2Aw9v05iPhCmI256A==/109951173823280680.jpg
+                  publishTime: 8/26/2026
+                  artist:
+                    id: 31165554
+                    name: 概念黁
+                  description: 火爆全网《GGEZ》迎来全新版本，音乐人概念黁、SUGAR惊喜加盟。轻快旋律持续抓耳，随时随地开启你的好心情。
+                  songs:
+                    - id: 3425832887
+                      name: GGEZ
+                      free: true
+                      album: GGEZ
+                      singer: M.Sasuke/概念黁/Sugar张惠晴
+                      picimg: https://p1.music.126.net/486EO2Aw9v05iPhCmI256A==/109951173823280680.jpg
+                      duration: '2:33'
+                      time: '2026/10/06 16:46:44'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/playlist_trackall:
+    post:
+      tags:
+        - 歌曲
+      summary: 获取歌单曲目
+      operationId: playlistTrackall
+      description: |
+        根据歌单 ID 查询歌单信息及歌曲列表，支持 `limit` / `offset` 分页；
+        不传 `limit` / `offset` 时实测返回歌单内全部歌曲。
+        `songs` 为当前页歌曲，`songCount` 为歌单内歌曲总数；`offset` 超出总数时 `songs` 为空数组。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaylistTrackallRequest'
+            example:
+              id: '9277635598'
+              limit: 500
+              offset: 0
+              timestamp: 1791275850414
+              ip: 104.28.240.138
+      responses:
+        '200':
+          description: 查询成功（实测该歌单共 4 首，响应示例截取前 2 项）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaylistResponse'
+              example:
+                code: 200
+                data:
+                  id: 9277635598
+                  name: 新年
+                  coverImage: https://p1.music.126.net/65O_AVwyaPszhF2pDHWVHw==/109951169282969862.jpg
+                  songCount: 4
+                  playCount: 0
+                  description: null
+                  tags: []
+                  creator:
+                    uid: 1473332243
+                    avatar: http://p1.music.126.net/m9Rw7Gj3fY9gm1ftc-5zsg==/109951172691390043.jpg
+                    name: Error404-Official
+                  songs:
+                    - id: 395304
+                      name: 春节序曲
+                      free: true
+                      album: 中国礼仪庆典大全之春节喜庆篇
+                      singer: 中国人民解放军军乐团
+                      picimg: https://p3.music.126.net/j0g_25GyPhar5xxJoGPZiA==/109951163910801634.jpg
+                      duration: '4:56'
+                      copyright: 2
+                      time: '2026/10/06 16:46:47'
+                    - id: 2028663002
+                      name: 叶蒨文-驿动的心英文版（贵族乐队 remix）
+                      free: true
+                      album: 铃声
+                      singer: 贵族乐队
+                      picimg: https://p3.music.126.net/QYSOl_9qGfzWHmR0ByaN3A==/109951168278075486.jpg
+                      duration: '0:30'
+                      copyright: 0
+                      time: '2026/10/06 16:46:47'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/getSongInfo:
+    post:
+      tags:
+        - 歌曲
+      summary: 获取歌曲基本信息
+      operationId: getSongInfo
+      description: 根据歌曲 ID 查询歌曲名称、专辑、歌手、封面图、时长、免费/版权状态等基本信息。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SongBaseRequest'
+            example:
+              id: '2665950805'
+              timestamp: 1791274982327
+              ip: 104.28.240.138
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SongInfoResponse'
+              example:
+                code: 200
+                data:
+                  id: 2665950805
+                  name: Land of Fog
+                  free: true
+                  album: Land of Fog
+                  singer: 柯拉一世/ACE Studio
+                  picimg: https://p1.music.126.net/evymH3Rw-iNVkLRu9asUGw==/109951170377099253.jpg
+                  duration: '3:03'
+                  copyright: 0
+                  time: '2026/10/06 16:23:05'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/getSongUrl:
+    post:
+      tags:
+        - 歌曲
+      summary: 获取歌曲播放地址
+      operationId: getSongUrl
+      description: |
+        根据歌曲 ID 与音质等级获取音频播放直链。
+        实际返回的音质（`level` / `br`）受版权与账号会员状态影响，以响应为准；
+        高音质请求可能被降级返回较低音质。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SongUrlRequest'
+            example:
+              id: '2665950805'
+              level: standard
+              timestamp: 1791274984578
+              ip: 104.28.240.138
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SongUrlResponse'
+              example:
+                code: 200
+                data:
+                  id: 2665950805
+                  url: https://m701.music.126.net/20261006165205/e2c6328dc1ddc3224b80d7a5e24303b2/jdymusic/obj/wo3DlMOGwrbDjj7DisKw/57648542423/e8d7/5e9f/daad/2d5fea5b6bf824d6be28a9bf2737f6db.mp3?vuutv=kYzNDy4oX1I+Z/WNj7DBZE0QS+ZzapAhIfh6cW6Ew1dByhiDblDxrj3jQgF739opVE9v9JuEWZbKAd2vOhHpif3tWZdJM0znxf4pratMzJw=
+                  br: 128000
+                  level: standard
+                  size: 2925340
+                  md5: 2d5fea5b6bf824d6be28a9bf2737f6db
+                  channelLayout: null
+                  effects: null
+                  cookie:
+                    id: netease-2
+                    label: 备用账号 #2
+                    index: 1
+                  time: '2026/10/06 16:27:06'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/getSongLyric:
+    post:
+      tags:
+        - 歌曲
+      summary: 获取歌曲歌词
+      operationId: getSongLyric
+      description: |
+        根据歌曲 ID 查询歌词，返回原文（LRC）、翻译、罗马音、卡拉OK及逐字歌词等多种格式。
+        部分字段可能为空字符串，表示该歌曲没有对应格式的歌词。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SongBaseRequest'
+            example:
+              id: '2665950805'
+              timestamp: 1791274987357
+              ip: 104.28.240.138
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SongLyricResponse'
+              example:
+                code: 200
+                data:
+                  lrc: |-
+                    {"t":-1000,"c":[{"tx":"作词: "},{"tx":"柯拉一世","li":"...","or":"..."}]}
+                    [00:00.000]Far to the east in mist so deep
+                    [00:05.296]There's a land where no man step on
+                    ...（此处省略后续歌词行）
+                  tlyric: |-
+                    [00:00.000]大陆以东，雾色之中
+                    [00:05.296]有一片无人踏足之地
+                    ...（此处省略后续歌词行）
+                  romalrc: ''
+                  klyric: ''
+                  yrc: ''
+                  yromalrc: ''
+                  ytlrc: ''
+                  time: '2026/10/06 16:28:19'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+components:
+  responses:
+    BadRequest:
+      description: 请求参数缺失或不合法（如缺少 `id` 或 `keyword` 参数）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: 400
+            message: Missing id parameter
+            data: null
+    NotFound:
+      description: 资源不存在（如专辑 ID 无效）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: 404
+            message: Failed to fetch album
+            data: null
+    ServerError:
+      description: 服务端处理失败（如歌曲不存在、上游接口异常）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: 500
+            message: Cannot read properties of undefined (reading 'fee')
+            data: null
+  schemas:
+    CommonRequest:
+      type: object
+      title: 公共请求字段
+      properties:
+        timestamp:
+          type: integer
+          format: int64
+          description: 客户端毫秒时间戳，每次请求携带当前时间即可
+          example: 1791274982327
+        ip:
+          type: string
+          description: 客户端 IP，服务端可能用于地区相关逻辑；直接透传调用方真实 IP 即可
+          example: 104.28.240.138
+    SongBaseRequest:
+      title: 歌曲查询基础请求
+      allOf:
+        - $ref: '#/components/schemas/CommonRequest'
+        - type: object
+          required:
+            - id
+          properties:
+            id:
+              type: string
+              description: 歌曲 ID（网易云音乐数字 ID 的字符串形式），缺失时返回 400
+              example: '2665950805'
+    SearchRequest:
+      title: 搜索请求
+      allOf:
+        - $ref: '#/components/schemas/CommonRequest'
+        - type: object
+          required:
+            - keyword
+          properties:
+            keyword:
+              type: string
+              description: 搜索关键词，缺失时返回 400
+              example: alan
+            type:
+              type: integer
+              description: |
+                搜索类型（与网易云音乐搜索 type 一致），默认 1：
+                `1` 单曲、`10` 专辑、`100` 歌手、`1000` 歌单、`1004` MV、`1006` 歌词、
+                `1009` 电台、`1014` 视频、`1018` 综合。
+                返回结构随 type 变化，见 SearchResponse。
+              default: 1
+              example: 1
+            limit:
+              type: integer
+              description: 分页大小，默认 30
+              default: 30
+              example: 100
+            offset:
+              type: integer
+              description: 分页偏移，从 0 开始
+              default: 0
+              example: 0
+    PlaylistTrackallRequest:
+      title: 歌单曲目请求
+      allOf:
+        - $ref: '#/components/schemas/CommonRequest'
+        - type: object
+          required:
+            - id
+          properties:
+            id:
+              type: string
+              description: 歌单 ID，缺失时返回 400
+              example: '9277635598'
+            limit:
+              type: integer
+              description: 分页大小；不传时实测返回歌单内全部歌曲
+              example: 500
+            offset:
+              type: integer
+              description: 分页偏移，从 0 开始
+              default: 0
+              example: 0
+    SongUrlRequest:
+      title: 播放地址请求
+      allOf:
+        - $ref: '#/components/schemas/SongBaseRequest'
+        - type: object
+          properties:
+            level:
+              type: string
+              description: |
+                期望的音质等级，不传时默认 `standard`。取值与网易云音乐音质一致：
+                `standard` 标准 128kbps、`higher` 较高 192kbps、`exhigh` 极高 320kbps、
+                `lossless` 无损、`hires` Hi-Res、`jyeffect` 高清环绕声、`sky` 沉浸环绕声、`jymaster` 超清母带。
+                实际音质以响应中的 `level` / `br` 为准。
+              default: standard
+              enum:
+                - standard
+                - higher
+                - exhigh
+                - lossless
+                - hires
+                - jyeffect
+                - sky
+                - jymaster
+              example: standard
+    SongInfo:
+      type: object
+      title: 歌曲信息
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 歌曲 ID
+          example: 2665950805
+        name:
+          type: string
+          description: 歌曲名
+          example: Land of Fog
+        free:
+          type: boolean
+          description: 是否免费歌曲
+          example: true
+        album:
+          type: string
+          description: 专辑名
+          example: Land of Fog
+        singer:
+          type: string
+          description: 歌手，多名歌手以 `/` 分隔
+          example: 柯拉一世/ACE Studio
+        picimg:
+          type: string
+          format: uri
+          description: 封面图 URL（网易云音乐 CDN，可直接 GET，建议 Referer 置空）
+          example: https://p1.music.126.net/evymH3Rw-iNVkLRu9asUGw==/109951170377099253.jpg
+        duration:
+          type: string
+          description: 时长，格式为 `m:ss`
+          example: '3:03'
+        copyright:
+          type: integer
+          description: 版权状态标记，观测取值 0/1/2（含义以服务端实现为准，与 free 无固定对应关系）
+          example: 0
+        time:
+          type: string
+          description: 查询时间，格式 `yyyy/MM/dd HH:mm:ss`
+          example: '2026/10/06 16:23:05'
+    SongUrlData:
+      type: object
+      title: 播放地址信息
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 歌曲 ID
+          example: 2665950805
+        url:
+          type: string
+          format: uri
+          description: 音频直链（网易云音乐 CDN，带签名 token，有时效性；支持 Range 分段请求）
+          example: https://m701.music.126.net/20261006165205/e2c6328dc1ddc3224b80d7a5e24303b2/jdymusic/obj/wo3DlMOGwrbDjj7DisKw/57648542423/e8d7/5e9f/daad/2d5fea5b6bf824d6be28a9bf2737f6db.mp3?vuutv=kYzNDy4oX1I+Z/WNj7DBZE0QS+ZzapAhIfh6cW6Ew1dByhiDblDxrj3jQgF739opVE9v9JuEWZbKAd2vOhHpif3tWZdJM0znxf4pratMzJw=
+        br:
+          type: integer
+          description: 音频码率（bps），如 128000 表示 128kbps
+          example: 128000
+        level:
+          type: string
+          description: 实际返回的音质等级（可能与请求的 level 不同）
+          example: standard
+        size:
+          type: integer
+          description: 音频文件大小（字节）
+          example: 2925340
+        md5:
+          type: string
+          description: 音频文件 MD5，可用于完整性校验
+          example: 2d5fea5b6bf824d6be28a9bf2737f6db
+        channelLayout:
+          type: string
+          nullable: true
+          description: 声道布局，可能为 null
+          example: null
+        effects:
+          type: string
+          nullable: true
+          description: 音效信息，可能为 null
+          example: null
+        cookie:
+          type: object
+          nullable: true
+          description: 服务端本次使用的账号信息（账号池），可能为 null；用于排查问题
+          properties:
+            id:
+              type: string
+              description: 账号标识
+              example: netease-2
+            label:
+              type: string
+              description: 账号显示名称
+              example: 备用账号 #2
+            index:
+              type: integer
+              description: 账号池序号
+              example: 1
+        time:
+          type: string
+          description: 查询时间，格式 `yyyy/MM/dd HH:mm:ss`
+          example: '2026/10/06 16:27:06'
+    SongLyricData:
+      type: object
+      title: 歌词信息
+      properties:
+        lrc:
+          type: string
+          description: |
+            原文歌词（LRC 格式）。开头可能包含网易云的 JSON 元数据行（歌词作者等信息），
+            解析时需按行处理，`{` 开头的行需按元数据处理或跳过。
+        tlyric:
+          type: string
+          description: 翻译歌词（LRC 格式），无翻译时为空字符串
+        romalrc:
+          type: string
+          description: 罗马音歌词（LRC 格式），可能为空字符串
+        klyric:
+          type: string
+          description: 卡拉OK歌词，可能为空字符串
+        yrc:
+          type: string
+          description: 逐字歌词（YRC 格式），可能为空字符串
+        yromalrc:
+          type: string
+          description: 逐字罗马音歌词，可能为空字符串
+        ytlrc:
+          type: string
+          description: 逐字翻译歌词，可能为空字符串
+        time:
+          type: string
+          description: 查询时间，格式 `yyyy/MM/dd HH:mm:ss`
+          example: '2026/10/06 16:28:19'
+    SongInfoResponse:
+      type: object
+      title: 歌曲信息响应
+      properties:
+        code:
+          type: integer
+          description: 业务状态码，与 HTTP 状态码一致，200 表示成功
+          example: 200
+        data:
+          $ref: '#/components/schemas/SongInfo'
+    SongUrlResponse:
+      type: object
+      title: 播放地址响应
+      properties:
+        code:
+          type: integer
+          description: 业务状态码，与 HTTP 状态码一致，200 表示成功
+          example: 200
+        data:
+          $ref: '#/components/schemas/SongUrlData'
+    SongLyricResponse:
+      type: object
+      title: 歌词响应
+      properties:
+        code:
+          type: integer
+          description: 业务状态码，与 HTTP 状态码一致，200 表示成功
+          example: 200
+        data:
+          $ref: '#/components/schemas/SongLyricData'
+    SongSearchData:
+      type: object
+      title: 单曲搜索结果（type=1）
+      properties:
+        songs:
+          type: array
+          description: 歌曲列表，项结构与 getSongInfo 的 data 一致
+          items:
+            $ref: '#/components/schemas/SongInfo'
+        songCount:
+          type: integer
+          description: 符合条件的歌曲总数
+          example: 343
+    GenericSearchData:
+      type: object
+      title: 其他类型搜索结果（透传网易云原始结构）
+      description: |
+        `type` 不为 1 时透传网易云搜索原始结果：数组键为资源复数名，计数键为「资源名 + Count」，
+        如 type=10 → `albums` / `albumCount`、type=100 → `artists` / `artistCount`、
+        type=1000 → `playlists` / `playlistCount`（均实测）；部分结果可能包含 `searchQcReminder` 提示字段。
+      additionalProperties: true
+    SearchResponse:
+      type: object
+      title: 搜索响应
+      properties:
+        code:
+          type: integer
+          description: 业务状态码，与 HTTP 状态码一致，200 表示成功
+          example: 200
+        data:
+          description: 搜索结果，结构随请求的 type 变化；type=1 时为 SongSearchData
+          anyOf:
+            - $ref: '#/components/schemas/SongSearchData'
+            - $ref: '#/components/schemas/GenericSearchData'
+    AlbumData:
+      type: object
+      title: 专辑详情
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 专辑 ID
+          example: 394505804
+        name:
+          type: string
+          description: 专辑名
+          example: GGEZ
+        picUrl:
+          type: string
+          format: uri
+          description: 专辑封面 URL
+          example: https://p2.music.126.net/486EO2Aw9v05iPhCmI256A==/109951173823280680.jpg
+        publishTime:
+          type: string
+          description: 发行时间，观测格式为 M/D/YYYY（如 8/26/2026）
+          example: 8/26/2026
+        artist:
+          type: object
+          description: 专辑歌手
+          properties:
+            id:
+              type: integer
+              format: int64
+              description: 歌手 ID
+              example: 31165554
+            name:
+              type: string
+              description: 歌手名
+              example: 概念黁
+        description:
+          type: string
+          nullable: true
+          description: 专辑简介，可能为 null
+        songs:
+          type: array
+          description: 专辑内歌曲，项结构与 getSongInfo 的 data 一致，但实测可能缺少 copyright 字段
+          items:
+            $ref: '#/components/schemas/SongInfo'
+    PlaylistData:
+      type: object
+      title: 歌单信息与曲目
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 歌单 ID
+          example: 9277635598
+        name:
+          type: string
+          description: 歌单名
+          example: 新年
+        coverImage:
+          type: string
+          format: uri
+          description: 歌单封面 URL
+          example: https://p1.music.126.net/65O_AVwyaPszhF2pDHWVHw==/109951169282969862.jpg
+        songCount:
+          type: integer
+          description: 歌单内歌曲总数（分页依据，songs 为当前页）
+          example: 4
+        playCount:
+          type: integer
+          description: 播放次数
+          example: 0
+        description:
+          type: string
+          nullable: true
+          description: 歌单简介，可能为 null
+        tags:
+          type: array
+          description: 歌单标签，实测可为空数组
+          items:
+            type: string
+        creator:
+          type: object
+          description: 歌单创建者
+          properties:
+            uid:
+              type: integer
+              format: int64
+              description: 创建者用户 ID
+              example: 1473332243
+            avatar:
+              type: string
+              format: uri
+              description: 创建者头像 URL（可能为 http:// 协议）
+              example: http://p1.music.126.net/m9Rw7Gj3fY9gm1ftc-5zsg==/109951172691390043.jpg
+            name:
+              type: string
+              description: 创建者昵称
+              example: Error404-Official
+        songs:
+          type: array
+          description: 当前页歌曲，项结构与 getSongInfo 的 data 一致
+          items:
+            $ref: '#/components/schemas/SongInfo'
+    AlbumResponse:
+      type: object
+      title: 专辑详情响应
+      properties:
+        code:
+          type: integer
+          description: 业务状态码，与 HTTP 状态码一致，200 表示成功
+          example: 200
+        data:
+          $ref: '#/components/schemas/AlbumData'
+    PlaylistResponse:
+      type: object
+      title: 歌单响应
+      properties:
+        code:
+          type: integer
+          description: 业务状态码，与 HTTP 状态码一致，200 表示成功
+          example: 200
+        data:
+          $ref: '#/components/schemas/PlaylistData'
+    ErrorResponse:
+      type: object
+      title: 错误响应
+      properties:
+        code:
+          type: integer
+          description: 与 HTTP 状态码一致
+          example: 400
+        message:
+          type: string
+          description: 错误信息
+          example: Missing id parameter
+        data:
+          nullable: true
+          description: 固定为 null
+          example: null
