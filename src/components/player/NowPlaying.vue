@@ -4,7 +4,6 @@ import { usePlayerStore } from '@/stores/player'
 import { useSettingsStore } from '@/stores/settings'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
-import { guardWrite } from '@/composables/useWriteAction'
 import { fetchLyric } from '@/api/song'
 import { findActiveLine, parseLyrics, type ParsedLyrics } from '@/utils/lyric'
 import { downloadSong } from '@/utils/download'
@@ -107,7 +106,6 @@ function toggleTranslation() {
 async function onDownload() {
   const song = player.currentSong
   if (!song) return
-  if (!guardWrite()) return
   toast.info('开始下载')
   const result = await downloadSong(song, settings.quality)
   if (!result.ok) toast.error(result.reason || '下载失败')

@@ -125,6 +125,20 @@ describe('SongList', () => {
     expect(wrapper.find('button[aria-label="取消喜欢"]').exists()).toBe(true)
   })
 
+  it('虚拟登录模式允许下载（下载不属于写操作）', async () => {
+    const auth = useAuthStore()
+    auth.mode = 'virtual'
+    auth.virtualUser = { userId: 9, nickname: 'v', avatarUrl: '' }
+    const { downloadSong } = await import('@/utils/download')
+    const { useToastStore } = await import('@/stores/toast')
+    const wrapper = mountList()
+    const downloadBtn = wrapper.find('button[aria-label="下载"]')
+    await downloadBtn.trigger('click')
+    await flushPromises()
+    expect(downloadSong).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), expect.anything())
+    expect(useToastStore().items.some((t) => t.message.includes('虚拟登录'))).toBe(false)
+  })
+
   it('removable 时显示移除按钮并触发事件', async () => {
     const wrapper = mount(SongList, {
       props: { songs: [makeSong(1)], removable: true },

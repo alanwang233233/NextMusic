@@ -2,7 +2,6 @@
 import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
-import { guardWrite } from '@/composables/useWriteAction'
 import { formatDuration } from '@/utils/format'
 import { downloadSong } from '@/utils/download'
 import { useSettingsStore } from '@/stores/settings'
@@ -49,7 +48,6 @@ function onLike(song: Song) {
 }
 
 async function onDownload(song: Song) {
-  if (!guardWrite()) return
   toast.info('开始下载')
   const result = await downloadSong(song, settings.quality)
   if (!result.ok) toast.error(result.reason || '下载失败')
