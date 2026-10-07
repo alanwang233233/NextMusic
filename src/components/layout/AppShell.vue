@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { usePlayerStore } from '@/stores/player'
+import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 import SideBar from './SideBar.vue'
 import TopBar from './TopBar.vue'
 import BottomNav from './BottomNav.vue'
 import PlayerBar from '@/components/player/PlayerBar.vue'
 import NowPlaying from '@/components/player/NowPlaying.vue'
 import QueueDrawer from '@/components/player/QueueDrawer.vue'
+
+// 全局键盘快捷键（空格播放/暂停，Ctrl+左右切歌，Ctrl+上下音量）
+useKeyboardShortcuts()
 </script>
 
 <template>

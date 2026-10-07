@@ -177,15 +177,15 @@ describe('PlayerEngine 降级链', () => {
   })
 
   it('全部尝试失败后回调 onFailed（且只回调一次）', async () => {
-    const { callbacks, failed } = makeCallbacks()
+    const { callbacks, resolvedUrls, failed } = makeCallbacks()
     const engine = new PlayerEngine(callbacks)
     fake = engine.audio as unknown as FakeAudio
 
+    // 第一步 main302 失败 → outer 接管
     await engine.play(song, 'standard')
     fake.dispatch('error')
-    await vi.waitFor(() => expect(failed.length).toBeGreaterThanOrEqual(0))
-    fake.dispatch('error')
-    await vi.waitFor(() => expect(failed.length).toBeGreaterThanOrEqual(0))
+    await vi.waitFor(() => expect(resolvedUrls).toHaveLength(2))
+    // 第二步 outer 失败 → 链路耗尽
     fake.dispatch('error')
     await vi.waitFor(() => expect(failed).toHaveLength(1))
     // 链路已耗尽，继续派发错误不再累积失败回调

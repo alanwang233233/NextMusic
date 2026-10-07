@@ -76,6 +76,8 @@ export class PlayerEngine {
   private pendingUrl: string | null = null
   /** 已对当前 token 上报过失败的标记，避免链路耗尽后重复回调 */
   private failedToken = 0
+  /** 合并同一 tick 内的多次推进请求（play() 拒绝与 error 事件竞争） */
+  private advanceTimer: number | undefined
   /** 预缓存命中的地址（本次播放的第 0 步） */
   private preloadedFirst: UrlResolution | null = null
 
@@ -86,7 +88,7 @@ export class PlayerEngine {
     this.audio.addEventListener('error', () => {
       // 旧歌曲/旧尝试残留的 error 事件不应推进当前的降级链
       if (!this.isEventForCurrentAttempt()) return
-      this.advance('音频加载失败')
+      this.requestAdvance('音频加载失败')
     })
     this.audio.addEventListener('loadedmetadata', () => {
       if (!this.isEventForCurrentAttempt()) return
@@ -145,6 +147,7 @@ export class PlayerEngine {
     this.chainIndex = 0
     this.activeSourceValue = null
     this.pendingUrl = null
+    window.clearTimeout(this.advanceTimer)
     this.callbacks.onBufferingChange?.(false)
     await this.runChain(myToken, '开始播放')
   }
@@ -177,13 +180,26 @@ export class PlayerEngine {
           this.callbacks.onPaused()
           return
         }
-        this.advance('浏览器拒绝了播放请求')
+        this.requestAdvance('浏览器拒绝了播放请求')
       })
     } catch (err) {
       if (token !== this.token) return
       const reason = err instanceof Error ? err.message : String(err)
       this.advance(reason)
     }
+  }
+
+  /**
+   * 请求推进降级链。play() 拒绝与 error 事件可能对同一次尝试同时触发，
+   * 合并到下一个 tick 只推进一次。
+   */
+  private requestAdvance(reason: string): void {
+    const tokenAtRequest = this.token
+    window.clearTimeout(this.advanceTimer)
+    this.advanceTimer = window.setTimeout(() => {
+      if (tokenAtRequest !== this.token) return
+      this.advance(reason)
+    }, 0)
   }
 
   /** 当前尝试失败，推进到下一步 */
