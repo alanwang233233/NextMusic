@@ -94,32 +94,28 @@ describe('main302Url', () => {
   })
 
   it('构造 302 地址并携带 level 与时间戳', () => {
-    const url = new URL(main302Url(42, 'exhigh', false))
+    const url = new URL(main302Url(42, 'exhigh'))
     expect(url.origin + url.pathname).toBe(`${MAIN_API_BASE}/song/url/v1/302`)
     expect(url.searchParams.get('id')).toBe('42')
     expect(url.searchParams.get('level')).toBe('exhigh')
     expect(url.searchParams.get('timestamp')).toMatch(/^\d{13}$/)
   })
 
-  it('unblock=true 参数', () => {
-    expect(main302Url(42, 'lossless', true)).toContain('unblock=true')
-  })
-
   it('登录态 cookie 追加到 302 地址（保证音质等级生效）', () => {
     bindCookieProvider(() => 'MUSIC_U=abc')
-    const url = new URL(main302Url(42, 'lossless', false))
+    const url = new URL(main302Url(42, 'lossless'))
     expect(url.searchParams.get('cookie')).toBe('MUSIC_U=abc')
   })
 
   it('未登录时不携带 cookie 参数', () => {
-    const url = new URL(main302Url(42, 'standard', false))
+    const url = new URL(main302Url(42, 'standard'))
     expect(url.searchParams.has('cookie')).toBe(false)
   })
 })
 
 describe('ATTEMPT_CHAIN', () => {
-  it('降级顺序：302 → 302+unblock → OuterAPI', () => {
-    expect(ATTEMPT_CHAIN).toEqual<AttemptKind[]>(['main302', 'main302-unblock', 'outer'])
+  it('降级顺序：302 → OuterAPI', () => {
+    expect(ATTEMPT_CHAIN).toEqual<AttemptKind[]>(['main302', 'outer'])
   })
 })
 
@@ -151,23 +147,18 @@ describe('PlayerEngine 降级链', () => {
     expect(failed).toHaveLength(0)
   })
 
-  it('音频报错后推进到 unblock 尝试，再报错后走 OuterAPI', async () => {
+  it('音频报错后直接推进到 OuterAPI', async () => {
     const { callbacks, resolvedUrls } = makeCallbacks()
     const engine = new PlayerEngine(callbacks)
     fake = engine.audio as unknown as FakeAudio
 
     await engine.play(song, 'exhigh')
-    expect(resolvedUrls[0]).not.toContain('unblock=true')
+    expect(resolvedUrls[0]).toContain('/song/url/v1/302?id=42')
 
-    // 第一次失败
+    // 第一次失败 → OuterAPI
     fake.dispatch('error')
     await vi.waitFor(() => expect(resolvedUrls).toHaveLength(2))
-    expect(resolvedUrls[1]).toContain('unblock=true')
-
-    // 第二次失败 → OuterAPI
-    fake.dispatch('error')
-    await vi.waitFor(() => expect(resolvedUrls).toHaveLength(3))
-    expect(resolvedUrls[2]).toContain('outer.example/42.mp3')
+    expect(resolvedUrls[1]).toContain('outer.example/42.mp3')
   })
 
   it('元数据时长过短也推进降级链', async () => {
@@ -180,11 +171,8 @@ describe('PlayerEngine 降级链', () => {
     fake.duration = 30
     fake.dispatch('loadedmetadata')
     await vi.waitFor(() => expect(resolvedUrls).toHaveLength(2))
-
-    // 第二次依旧过短 → OuterAPI
-    fake.duration = 30
-    fake.dispatch('loadedmetadata')
-    await vi.waitFor(() => expect(resolvedUrls).toHaveLength(3))
+    // 第二步 OuterAPI
+    expect(resolvedUrls[1]).toContain('outer.example/42.mp3')
     expect(failed).toHaveLength(0)
   })
 
@@ -256,5 +244,90 @@ describe('PlayerEngine 降级链', () => {
     await engine.play({ ...song, id: 43 }, 'standard')
     fake.dispatch('error')
     await vi.waitFor(() => expect(resolvedUrls.length).toBeGreaterThan(firstLen))
+  })
+})
+
+describe('PlayerEngine 预缓存命中', () => {
+  beforeEach(() => {
+    FakeAudio.instances = []
+    vi.stubGlobal('Audio', FakeAudio as unknown as typeof Audio)
+    resetEngineForTest()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('preloaded 作为第 0 步直接使用', async () => {
+    const { callbacks, resolvedUrls } = makeCallbacks()
+    const engine = new PlayerEngine(callbacks)
+    const fakeAudio = engine.audio as unknown as FakeAudio
+
+    await engine.play(song, 'exhigh', { url: 'https://precache.example/42.mp3', source: 'main302' })
+    expect(resolvedUrls[0]).toBe('https://precache.example/42.mp3')
+    expect(resolvedUrls).toHaveLength(1)
+  })
+
+  it('preloaded 失败后回退到常规 302 链路', async () => {
+    const { callbacks, resolvedUrls } = makeCallbacks()
+    const engine = new PlayerEngine(callbacks)
+    const fakeAudio = engine.audio as unknown as FakeAudio
+
+    await engine.play(song, 'exhigh', { url: 'https://precache.example/42.mp3', source: 'main302' })
+    fakeAudio.currentSrc = 'https://precache.example/42.mp3'
+    fakeAudio.dispatch('error')
+    await vi.waitFor(() => expect(resolvedUrls).toHaveLength(2))
+    expect(resolvedUrls[1]).toContain('/song/url/v1/302?id=42&level=exhigh')
+  })
+})
+
+describe('PlayerEngine 缓冲状态', () => {
+  beforeEach(() => {
+    FakeAudio.instances = []
+    vi.stubGlobal('Audio', FakeAudio as unknown as typeof Audio)
+    resetEngineForTest()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function makeBufferCallbacks() {
+    const buffering: boolean[] = []
+    const base = makeCallbacks()
+    return {
+      ...base,
+      buffering,
+      callbacks: {
+        ...base.callbacks,
+        onBufferingChange: (b: boolean) => buffering.push(b),
+      } as typeof base.callbacks,
+    }
+  }
+
+  it('waiting 进入缓冲中，恢复播放后清除', async () => {
+    const ctx = makeBufferCallbacks()
+    const engine = new PlayerEngine(ctx.callbacks)
+    const fakeAudio = engine.audio as unknown as FakeAudio
+
+    await engine.play(song, 'exhigh')
+    fakeAudio.dispatch('waiting')
+    expect(ctx.buffering.at(-1)).toBe(true)
+    fakeAudio.dispatch('playing')
+    expect(ctx.buffering.at(-1)).toBe(false)
+  })
+
+  it('切歌后残留的 waiting 不会触发新歌的缓冲状态', async () => {
+    const ctx = makeBufferCallbacks()
+    const engine = new PlayerEngine(ctx.callbacks)
+    const fakeAudio = engine.audio as unknown as FakeAudio
+
+    await engine.play(song, 'exhigh')
+    await engine.play({ ...song, id: 99 }, 'exhigh')
+    // 模拟旧歌残留的 waiting：事件归属旧资源（currentSrc 仍指向旧地址）
+    fakeAudio.currentSrc = 'https://old-resource.example/a.mp3'
+    fakeAudio.dispatch('waiting')
+    // play() 已重置 buffering 状态，残留事件不应改动
+    expect(ctx.buffering.at(-1)).toBe(false)
   })
 })

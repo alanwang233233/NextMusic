@@ -2,23 +2,23 @@ import { getCookie, requireMainApiBase } from '@/api/http'
 import { fetchOuterSongUrl } from '@/api/outer'
 import type { Song, UrlSource } from '@/types/models'
 
-/** 播放降级链：1) 302 新版接口 2) 302 + unblock 3) OuterAPI */
-export type AttemptKind = 'main302' | 'main302-unblock' | 'outer'
+/** 播放降级链：0) 预缓存命中 1) 302 新版接口 2) OuterAPI（失败指数退避重试） */
+export type AttemptKind = 'main302' | 'outer' | 'preloaded'
 
-export const ATTEMPT_CHAIN: AttemptKind[] = ['main302', 'main302-unblock', 'outer']
+export const ATTEMPT_CHAIN: AttemptKind[] = ['main302', 'outer']
 
-export function attemptSource(kind: AttemptKind): UrlSource {
-  return kind === 'outer' ? 'outer' : kind
+export function attemptSource(kind: AttemptKind, preloaded?: UrlResolution): UrlSource {
+  if (kind === 'preloaded') return preloaded?.source ?? 'main302'
+  return kind
 }
 
 /**
  * 构造 302 端点地址（audio 直接跟随 302 到音频直链）。
  * 登录 cookie 需要一并携带，否则登录用户拿不到所选音质等级对应的直链。
  */
-export function main302Url(songId: number, level: string, unblock: boolean): string {
+export function main302Url(songId: number, level: string): string {
   const base = requireMainApiBase()
   const params = new URLSearchParams({ id: String(songId), level, timestamp: String(Date.now()) })
-  if (unblock) params.set('unblock', 'true')
   const cookie = getCookie()
   if (cookie) params.set('cookie', cookie)
   return `${base}/song/url/v1/302?${params.toString()}`
@@ -45,7 +45,7 @@ export async function resolveAttempt(kind: AttemptKind, song: Song, level: strin
     const data = await fetchOuterSongUrl(song.id, level)
     return { url: data.url, source: 'outer' }
   }
-  return { url: main302Url(song.id, level, kind === 'main302-unblock'), source: attemptSource(kind) }
+  return { url: main302Url(song.id, level), source: attemptSource(kind) }
 }
 
 export interface EngineCallbacks {
@@ -56,6 +56,8 @@ export interface EngineCallbacks {
   onPaused: () => void
   onEnded: () => void
   onTimeUpdate: (currentTimeMs: number, durationMs: number) => void
+  /** 缓冲状态变化：true 表示正在缓冲 */
+  onBufferingChange?: (buffering: boolean) => void
 }
 
 /**
@@ -74,6 +76,8 @@ export class PlayerEngine {
   private pendingUrl: string | null = null
   /** 已对当前 token 上报过失败的标记，避免链路耗尽后重复回调 */
   private failedToken = 0
+  /** 预缓存命中的地址（本次播放的第 0 步） */
+  private preloadedFirst: UrlResolution | null = null
 
   constructor(callbacks: EngineCallbacks) {
     this.callbacks = callbacks
@@ -91,9 +95,15 @@ export class PlayerEngine {
         this.advance('音源时长过短（试听片段）')
       }
     })
-    this.audio.addEventListener('playing', () => this.callbacks.onPlaying())
+    this.audio.addEventListener('playing', () => this.onPlaybackResumed())
+    this.audio.addEventListener('canplay', () => this.onPlaybackResumed())
     this.audio.addEventListener('pause', () => this.callbacks.onPaused())
     this.audio.addEventListener('ended', () => this.callbacks.onEnded())
+    this.audio.addEventListener('waiting', () => {
+      // 旧资源残留的 waiting 不应触发当前歌的缓冲逻辑
+      if (!this.isEventForCurrentAttempt()) return
+      this.callbacks.onBufferingChange?.(true)
+    })
     this.audio.addEventListener('timeupdate', () => {
       this.callbacks.onTimeUpdate(this.audio.currentTime * 1000, this.audio.duration * 1000)
     })
@@ -116,15 +126,26 @@ export class PlayerEngine {
     return !currentSrc || currentSrc === this.pendingUrl
   }
 
-  /** 开始播放歌曲（触发完整降级链） */
-  async play(song: Song, level: string): Promise<void> {
+  /** 缓冲恢复（开始播放或数据就绪） */
+  private onPlaybackResumed(): void {
+    this.callbacks.onBufferingChange?.(false)
+    this.callbacks.onPlaying()
+  }
+
+  /**
+   * 开始播放歌曲（触发降级链）。
+   * @param preloaded 预缓存命中的地址，作为第 0 步直接使用，失败后继续走常规链路
+   */
+  async play(song: Song, level: string, preloaded?: UrlResolution): Promise<void> {
     const myToken = ++this.token
     this.currentSong = song
     this.level = level
-    this.chain = ATTEMPT_CHAIN
+    this.preloadedFirst = preloaded ?? null
+    this.chain = preloaded ? ['preloaded', ...ATTEMPT_CHAIN] : [...ATTEMPT_CHAIN]
     this.chainIndex = 0
     this.activeSourceValue = null
     this.pendingUrl = null
+    this.callbacks.onBufferingChange?.(false)
     await this.runChain(myToken, '开始播放')
   }
 
@@ -139,7 +160,12 @@ export class PlayerEngine {
     }
     const kind = this.chain[this.chainIndex]
     try {
-      const resolution = await resolveAttempt(kind, this.currentSong!, this.level)
+      let resolution: UrlResolution
+      if (kind === 'preloaded' && this.preloadedFirst) {
+        resolution = this.preloadedFirst
+      } else {
+        resolution = await resolveAttempt(kind, this.currentSong!, this.level)
+      }
       if (token !== this.token) return
       this.activeSourceValue = resolution.source
       this.callbacks.onResolved(resolution)

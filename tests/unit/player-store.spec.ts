@@ -29,6 +29,20 @@ vi.mock('@/api/song', () => ({
   scrobble: vi.fn(async () => ({ code: 200 })),
 }))
 
+import type { PreloadOutcome } from '@/player/precache'
+const preloadMock = vi.fn(async (_song: unknown, _level: string): Promise<PreloadOutcome | null> => null)
+const preloadPeek = vi.fn((_id: number): PreloadOutcome | null => null)
+const preloadTake = vi.fn((_id: number): PreloadOutcome | null => null)
+
+vi.mock('@/player/precache', () => ({
+  nextSongPreloader: {
+    preload: (...args: unknown[]) => preloadMock(...(args as [unknown, string])),
+    peek: (...args: unknown[]) => preloadPeek(...(args as [number])),
+    take: (...args: unknown[]) => preloadTake(...(args as [number])),
+    clear: vi.fn(),
+  },
+}))
+
 function makeSong(id: number): Song {
   return { id, name: `song-${id}`, artists: [{ id: 1, name: 'a' }], album: { id: 10, name: 'al' }, duration: 100_000 }
 }
@@ -193,5 +207,61 @@ describe('player store', () => {
     player.setVolume(-1)
     expect(player.volume).toBe(0)
     expect(player.muted).toBe(true)
+  })
+
+  it('播放进度过半自动预缓存下一曲，且每首歌只触发一次', async () => {
+    const player = usePlayerStore()
+    player.playQueue([makeSong(1), makeSong(2)], 0)
+    player.playing = true
+    player.durationMs = 200_000
+
+    preloadMock.mockResolvedValue({ songId: 2, url: 'https://x/2.mp3', source: 'main302' })
+    const { buildEngineCallbacks } = await import('@/stores/player')
+    const callbacks = buildEngineCallbacks()
+
+    // 进度未过半：不触发
+    callbacks.onTimeUpdate(90_000, 200_000)
+    expect(preloadMock).not.toHaveBeenCalled()
+
+    // 过半（>=50%）：触发一次
+    callbacks.onTimeUpdate(100_000, 200_000)
+    expect(preloadMock).toHaveBeenCalledTimes(1)
+
+    // 同一首歌内继续播放：不重复触发
+    callbacks.onTimeUpdate(150_000, 200_000)
+    expect(preloadMock).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => player.preloadedNextFor === player.currentSong?.id)
+  })
+
+  it('peekNextSong：order 模式回绕，loop/shuffle 返回 null，fm 取下一首', () => {
+    const player = usePlayerStore()
+    player.playQueue([makeSong(1), makeSong(2), makeSong(3)], 2)
+    expect(player.peekNextSong()?.id).toBe(1) // 末尾回绕到第一首
+
+    player.setMode('loop')
+    expect(player.peekNextSong()).toBeNull()
+    player.setMode('shuffle')
+    expect(player.peekNextSong()).toBeNull()
+
+    player.setMode('order')
+    player.fmMode = true
+    expect(player.peekNextSong()).toBeNull() // FM 队列末尾
+    player.queue.push(makeSong(9))
+    expect(player.peekNextSong()?.id).toBe(9)
+  })
+
+  it('playAt 使用预缓存地址直接播放', async () => {
+    const player = usePlayerStore()
+    const preloaded = { songId: 2, url: 'https://x/2.mp3', source: 'main302' as const }
+    // 无预缓存：play 收到 undefined
+    preloadTake.mockReturnValue(null)
+    player.playQueue([makeSong(1), makeSong(2)], 0)
+    await vi.waitFor(() => player.index === 0)
+    expect(fakeEngine.play).toHaveBeenLastCalledWith(expect.objectContaining({ id: 1 }), expect.any(String), undefined)
+    // 有预缓存：play 收到预缓存结果
+    preloadTake.mockReturnValue(preloaded)
+    await player.playAt(1)
+    expect(fakeEngine.play).toHaveBeenLastCalledWith(expect.objectContaining({ id: 2 }), expect.any(String), preloaded)
+    preloadTake.mockReturnValue(null)
   })
 })

@@ -128,4 +128,4 @@ export type QualityLevel =
   | 'jymaster'
   | 'sky'
 
-export type UrlSource = 'main302' | 'main302-unblock' | 'outer'
+export type UrlSource = 'main302' | 'outer'

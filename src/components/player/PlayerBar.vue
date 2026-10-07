@@ -4,7 +4,6 @@ import { usePlayerStore } from '@/stores/player'
 import { useSettingsStore } from '@/stores/settings'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
-import { guardWrite } from '@/composables/useWriteAction'
 import { downloadSong } from '@/utils/download'
 import { QUALITY_LEVELS, qualityLabel } from '@/config/constants'
 import { formatDuration } from '@/utils/format'
@@ -51,7 +50,6 @@ function toggleLike() {
 async function onDownload() {
   const song = player.currentSong
   if (!song) return
-  if (!guardWrite()) return
   toast.info('开始下载')
   const result = await downloadSong(song, settings.quality)
   if (!result.ok) toast.error(result.reason || '下载失败')
@@ -114,8 +112,19 @@ function setVolume(v: number) {
                 <span class="block truncate text-sm font-medium text-white">{{ player.currentSong?.name }}</span>
                 <span class="block truncate text-[11px] text-zinc-500">
                   {{ player.currentSong ? artistsText(player.currentSong) : '' }}
-                  <span v-if="player.source" class="ml-1 hidden text-zinc-600 sm:inline">
-                    [{{ player.source === 'outer' ? '外部音源' : player.source === 'main302-unblock' ? '已解锁' : '主音源' }}]
+                  <span
+                    v-if="player.buffering"
+                    class="ml-1 inline-flex items-center gap-1 text-amber-400"
+                    data-testid="buffering-badge"
+                  >
+                    缓冲中
+                  </span>
+                  <span
+                    v-else-if="player.preloadedNextFor"
+                    class="ml-1 hidden text-emerald-400 sm:inline"
+                    data-testid="preloaded-badge"
+                  >
+                    下一首已缓存
                   </span>
                 </span>
               </span>

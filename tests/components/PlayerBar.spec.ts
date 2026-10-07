@@ -124,6 +124,28 @@ describe('PlayerBar', () => {
     expect(player.currentSong?.id).toBe(2)
   })
 
+  it('缓冲中 / 下一首已缓存指示', async () => {
+    const player = usePlayerStore()
+    player.playQueue([makeSong(1)], 0)
+    const wrapper = mountBar()
+
+    // 缓冲中
+    player.buffering = true
+    await flushPromises()
+    expect(wrapper.find('[data-testid="buffering-badge"]').exists()).toBe(true)
+    player.buffering = false
+
+    // 下一首已缓存（预缓存完成后）
+    player.preloadedNextFor = player.currentSong?.id ?? 0
+    await flushPromises()
+    expect(wrapper.find('[data-testid="preloaded-badge"]').exists()).toBe(true)
+
+    // 切歌后指示消失
+    player.preloadedNextFor = 0
+    await flushPromises()
+    expect(wrapper.find('[data-testid="preloaded-badge"]').exists()).toBe(false)
+  })
+
   it('播放模式循环切换', async () => {
     const player = usePlayerStore()
     player.playQueue([makeSong(1)], 0)

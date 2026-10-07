@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { getEngine, type UrlResolution } from '@/player/engine'
+import { nextSongPreloader } from '@/player/precache'
 import { useAuthStore } from './auth'
 import { useSettingsStore } from './settings'
 import { useToastStore } from './toast'
@@ -48,6 +49,10 @@ export function buildEngineCallbacks(): Parameters<typeof getEngine>[0] {
       const store = usePlayerStore()
       store.currentTimeMs = currentMs
       if (Number.isFinite(durationMs) && durationMs > 0) store.durationMs = durationMs
+      store.maybePreloadNext()
+    },
+    onBufferingChange: (buffering: boolean) => {
+      usePlayerStore().buffering = buffering
     },
   }
 }
@@ -75,6 +80,12 @@ export const usePlayerStore = defineStore('player', {
     /** FM 模式：end 事件后自动下一曲但不重置队列 */
     fmMode: false,
     _scrobbled: false,
+    /** 音频缓冲中（waiting 未恢复） */
+    buffering: false,
+    /** 已成功预缓存的“下一曲”所属的当前曲 songId（用于指示与防重） */
+    preloadedNextFor: 0,
+    _preloadTriggeredFor: 0,
+    _preloading: false,
   }),
   getters: {
     currentSong: (s): Song | null => s.queue[s.index] ?? null,
@@ -117,11 +128,16 @@ export const usePlayerStore = defineStore('player', {
       this.currentTimeMs = 0
       this.durationMs = song.duration
       this._scrobbled = false
+      this.buffering = false
+      this.preloadedNextFor = 0
+      this._preloadTriggeredFor = 0
       const settings = useSettingsStore()
       const engine = getEngine(engineCallbacksForStore())
       engine.setVolume(this.volume)
       try {
-        await engine.play(song, settings.quality)
+        // 命中预缓存则直接使用已缓冲的地址（第 0 步），失败后引擎继续常规降级链
+        const preloaded = nextSongPreloader.take(song.id) ?? undefined
+        await engine.play(song, settings.quality, preloaded)
       } catch {
         this.loading = false
       }
@@ -201,6 +217,46 @@ export const usePlayerStore = defineStore('player', {
       if (auth.mode === 'user' && song) {
         scrobble(song.id, song.album.id, Math.round(this.currentTimeMs / 1000)).catch(() => undefined)
       }
+    },
+
+    /** 播放进度过半（>=50%）时自动预缓存下一曲（默认行为，每首歌只触发一次） */
+    maybePreloadNext() {
+      if (!this.playing || !this.durationMs) return
+      const currentId = this.currentSong?.id ?? 0
+      if (this.currentTimeMs < this.durationMs / 2) return
+      if (this._preloadTriggeredFor === currentId || this._preloading) return
+      this._preloadTriggeredFor = currentId
+      void this.preloadNext()
+    },
+
+    /** 预缓存下一曲（按当前播放模式预测） */
+    async preloadNext() {
+      const song = this.peekNextSong()
+      if (!song) return
+      if (nextSongPreloader.peek(song.id)) {
+        this.preloadedNextFor = this.currentSong?.id ?? 0
+        return
+      }
+      if (this._preloading) return
+      this._preloading = true
+      try {
+        const settings = useSettingsStore()
+        const outcome = await nextSongPreloader.preload(song, settings.quality)
+        if (outcome) this.preloadedNextFor = this.currentSong?.id ?? 0
+      } finally {
+        this._preloading = false
+      }
+    },
+
+    /** 按播放模式预测下一曲（loop 重复当前曲无需预载；shuffle 无法预测） */
+    peekNextSong(): Song | null {
+      if (!this.queue.length) return null
+      if (this.fmMode) return this.queue[this.index + 1] ?? null
+      if (this.mode === 'order') {
+        const nextIndex = this.index + 1 < this.queue.length ? this.index + 1 : 0
+        return this.queue[nextIndex] ?? null
+      }
+      return null
     },
 
     /** 喜欢 / 取消喜欢当前歌曲（写守卫） */

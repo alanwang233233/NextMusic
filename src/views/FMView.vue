@@ -86,7 +86,11 @@ watch(
   () => [player.fmMode, player.index, player.playing] as const,
   ([fm, index, playing]) => {
     if (!fm || !playing) return
-    if (index >= player.queue.length - 1) void ensureQueue()
+    if (index >= player.queue.length - 1) {
+      void ensureQueue().then(() => player.preloadNext())
+    } else {
+      void player.preloadNext()
+    }
   },
 )
 

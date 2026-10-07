@@ -49,8 +49,9 @@ export interface MockState {
   likeCalls: string[]
   subscribeCalls: string[]
   song302Calls: number
-  unblockCalls: number
   outerCalls: number
+  /** 按歌曲 id 统计的 OuterAPI 解析次数 */
+  outerCallsById: Record<number, number>
 }
 
 /**
@@ -58,7 +59,7 @@ export interface MockState {
  * 注意：Playwright 以“后注册优先”的顺序匹配，因此最先注册兜底路由。
  */
 export async function setupMockRoutes(page: Page): Promise<MockState> {
-  const state: MockState = { likeCalls: [], subscribeCalls: [], song302Calls: 0, unblockCalls: 0, outerCalls: 0 }
+  const state: MockState = { likeCalls: [], subscribeCalls: [], song302Calls: 0, outerCalls: 0, outerCallsById: {} }
   const tone = fs.readFileSync(path.resolve('tests/e2e/fixtures/tone.wav'))
 
   // 兜底：任何非 localhost 且未显式 mock 的请求返回空成功，防止真实外呼。
@@ -139,14 +140,18 @@ export async function setupMockRoutes(page: Page): Promise<MockState> {
   // 播放：302 → 本地 wav（统一短音频，元数据校验通过）
   await page.route('**/song/url/v1/302*', (route) => {
     state.song302Calls++
-    const url = route.request().url()
-    if (url.includes('unblock=true')) state.unblockCalls++
-    void route.fulfill({ status: 302, headers: { Location: '/e2e/tone.wav' } })
+    // Location 必须指向页面 origin（生产中 302 到绝对 CDN 直链）；
+    // 若用被拦截请求的 origin（主 API 域名），重定向会被 catch-all 兜底成 JSON 导致降级
+    const pageOrigin = new URL(route.request().frame().url()).origin
+    void route.fulfill({ status: 302, headers: { Location: `${pageOrigin}/e2e/tone.wav` } })
   })
   await page.route('**/e2e/tone.wav', (route) => route.fulfill({ status: 200, contentType: 'audio/wav', body: tone }))
   await page.route('**/api/getSongUrl', (route) => {
     state.outerCalls++
-    return route.fulfill(json({ code: 200, data: { id: 101, url: '/e2e/tone.wav', br: 128000, level: 'standard', size: tone.length } }))
+    const body = JSON.parse(route.request().postData() || '{}')
+    const id = Number(body.id) || 0
+    state.outerCallsById[id] = (state.outerCallsById[id] || 0) + 1
+    return route.fulfill(json({ code: 200, data: { id: body.id, url: '/e2e/tone.wav', br: 128000, level: 'standard', size: tone.length } }))
   })
   await page.route('**/scrobble*', (route) => route.fulfill(json({ code: 200 })))
   await page.route('**/check/music*', (route) => route.fulfill(json({ code: 200, success: true })))
