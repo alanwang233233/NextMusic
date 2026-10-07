@@ -2,7 +2,7 @@
 
 基于网易云音乐的纯客户端 Web 音乐播放器：无自建后端，浏览器直连主NeteaseCloudMusicApi 兼容接口与 OuterAPI，登录态与播放降级全部在客户端处理。
 
-![Library] (Screenshot_index.png)
+![Library](Screenshot_index.png)
 
 ## 功能特性
 
