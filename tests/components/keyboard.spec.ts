@@ -41,13 +41,25 @@ function mountHost() {
   return mount(Host, { attachTo: document.body })
 }
 
-function pressKey(init: { code: string; key: string; ctrlKey?: boolean; repeat?: boolean; target?: HTMLElement }) {
+function pressKey(init: {
+  code: string
+  key: string
+  ctrlKey?: boolean
+  altKey?: boolean
+  shiftKey?: boolean
+  repeat?: boolean
+  keyCode?: number
+  target?: HTMLElement
+}) {
   const event = new KeyboardEvent('keydown', {
     code: init.code,
     key: init.key,
     ctrlKey: init.ctrlKey ?? false,
     metaKey: false,
+    altKey: init.altKey ?? false,
+    shiftKey: init.shiftKey ?? false,
     repeat: init.repeat ?? false,
+    keyCode: init.keyCode,
     bubbles: true,
     cancelable: true,
   })
@@ -118,6 +130,68 @@ describe('全局键盘快捷键', () => {
     expect(player.currentSong?.id).toBe(2)
 
     pressKey({ code: 'ArrowLeft', key: 'ArrowLeft', ctrlKey: true })
+    expect(player.currentSong?.id).toBe(1)
+    wrapper.unmount()
+  })
+
+  it('裸方向键 ←/→ 同样切换歌曲', async () => {
+    const player = usePlayerStore()
+    player.playQueue([makeSong(1), makeSong(2), makeSong(3)], 0)
+    const wrapper = mountHost()
+
+    pressKey({ code: 'ArrowRight', key: 'ArrowRight' })
+    expect(player.currentSong?.id).toBe(2)
+    pressKey({ code: 'ArrowLeft', key: 'ArrowLeft' })
+    expect(player.currentSong?.id).toBe(1)
+    pressKey({ code: 'ArrowRight', key: 'ArrowRight', repeat: true })
+    expect(player.currentSong?.id).toBe(1)
+    wrapper.unmount()
+  })
+
+  it('⌘/Meta + 方向键切换歌曲（macOS）', async () => {
+    const player = usePlayerStore()
+    player.playQueue([makeSong(1), makeSong(2)], 0)
+    const wrapper = mountHost()
+
+    const event = new KeyboardEvent('keydown', {
+      code: 'ArrowRight', key: 'ArrowRight', metaKey: true, bubbles: true, cancelable: true,
+    })
+    document.body.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(player.currentSong?.id).toBe(2)
+    wrapper.unmount()
+  })
+
+  it('空格在 code 缺失（输入法环境）时仍可切换', async () => {
+    const player = usePlayerStore()
+    player.playQueue([makeSong(1)], 0)
+    const wrapper = mountHost()
+
+    // 模拟输入法环境：code 为 Unidentified，key 为空格
+    const event = pressKey({ code: 'Unidentified', key: ' ', keyCode: 32 })
+    expect(event.defaultPrevented).toBe(true)
+    expect(fakeEngine.togglePlay).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('Alt+方向键保留浏览器原生行为（前进/后退）', async () => {
+    const player = usePlayerStore()
+    player.playQueue([makeSong(1), makeSong(2)], 0)
+    const wrapper = mountHost()
+
+    const event = pressKey({ code: 'ArrowLeft', key: 'ArrowLeft', altKey: true })
+    expect(event.defaultPrevented).toBe(false)
+    expect(player.currentSong?.id).toBe(1)
+    wrapper.unmount()
+  })
+
+  it('Shift+方向键不劫持（文本选择等场景）', async () => {
+    const player = usePlayerStore()
+    player.playQueue([makeSong(1), makeSong(2)], 0)
+    const wrapper = mountHost()
+
+    const event = pressKey({ code: 'ArrowRight', key: 'ArrowRight', shiftKey: true })
+    expect(event.defaultPrevented).toBe(false)
     expect(player.currentSong?.id).toBe(1)
     wrapper.unmount()
   })

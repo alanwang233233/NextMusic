@@ -14,7 +14,17 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return EDITABLE_TAGS.has(target.tagName) || target.isContentEditable
 }
 
-/** 全局键盘快捷键：空格 播放/暂停；Ctrl+←/→ 切歌；Ctrl+↑/↓ 音量 */
+/** 空格匹配：兼容部分浏览器 / 输入法环境下 code 缺失的情况 */
+function isSpaceKey(e: KeyboardEvent): boolean {
+  return e.code === 'Space' || e.key === ' ' || e.keyCode === 32
+}
+
+/** 全局键盘快捷键（捕获阶段注册，避免被其他 handler 拦截）：
+ *  - 空格：播放/暂停
+ *  - ←/→ 与 Ctrl/⌘+←/→：上一曲/下一曲
+ *  - Ctrl/⌘+↑/↓：音量 ±10%
+ *  - 输入框聚焦时不劫持；Alt+方向键保留浏览器原生（前进/后退）
+ */
 export function useKeyboardShortcuts(): void {
   const player = usePlayerStore()
   const toast = useToastStore()
@@ -35,35 +45,44 @@ export function useKeyboardShortcuts(): void {
   function onKeydown(e: KeyboardEvent): void {
     if (isEditableTarget(e.target)) return
 
-    // 空格：播放 / 暂停。preventDefault 同时抑制聚焦按钮的原生激活，避免双重切换
-    if (e.code === 'Space' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    // 空格：播放 / 暂停。preventDefault 同时抑制聚焦按钮的原生激活与页面滚动
+    if (isSpaceKey(e) && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault()
       if (e.repeat) return
       player.togglePlay()
       return
     }
 
-    if (!e.ctrlKey && !e.metaKey) return
-    switch (e.code) {
-      case 'ArrowLeft':
-        e.preventDefault()
-        if (!e.repeat) player.prev()
-        return
-      case 'ArrowRight':
-        e.preventDefault()
-        if (!e.repeat) player.next()
-        return
-      case 'ArrowUp':
+    // ←/→ 与 Ctrl/⌘+←/→：切歌
+    const isLeft = e.key === 'ArrowLeft' || e.code === 'ArrowLeft'
+    const isRight = e.key === 'ArrowRight' || e.code === 'ArrowRight'
+    if (isLeft || isRight) {
+      if (e.altKey || e.shiftKey) return
+      e.preventDefault()
+      if (!e.repeat) {
+        if (isRight) player.next()
+        else player.prev()
+      }
+      return
+    }
+
+    // Ctrl/⌘+↑/↓：音量
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+      const isUp = e.key === 'ArrowUp' || e.code === 'ArrowUp'
+      const isDown = e.key === 'ArrowDown' || e.code === 'ArrowDown'
+      if (isUp) {
         e.preventDefault()
         adjustVolume(VOLUME_STEP)
         return
-      case 'ArrowDown':
+      }
+      if (isDown) {
         e.preventDefault()
         adjustVolume(-VOLUME_STEP)
         return
+      }
     }
   }
 
-  onMounted(() => window.addEventListener('keydown', onKeydown))
-  onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+  onMounted(() => window.addEventListener('keydown', onKeydown, true))
+  onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown, true))
 }
