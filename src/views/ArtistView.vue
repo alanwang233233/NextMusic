@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 import { guardWrite } from '@/composables/useWriteAction'
 import { fetchArtistDetail, fetchArtistTopSongs, fetchArtistAlbums, fetchArtistDesc, fetchSimilarArtists, subscribeArtist, fetchSubscribedArtists } from '@/api/artist'
+import { ApiError } from '@/api/http'
 import { formatCount } from '@/utils/format'
 import type { Album, ArtistDetail, Song } from '@/types/models'
 import PageLoading from '@/components/ui/PageLoading.vue'
@@ -32,6 +33,8 @@ const topSongs = ref<Song[]>([])
 const albums = ref<Album[]>([])
 const desc = ref<{ briefDesc: string; introduction: { ti: string; txt: string }[] }>({ briefDesc: '', introduction: [] })
 const similar = ref<ArtistDetail[]>([])
+/** /simi/artist 需要正式登录（游客 cookie 也不可用），未登录时给出提示 */
+const similarNeedsLogin = ref(false)
 const tab = ref<Tab>('songs')
 const subscribed = ref(false)
 const subscribing = ref(false)
@@ -51,7 +54,14 @@ async function load() {
     if (results[1].status === 'fulfilled') topSongs.value = results[1].value
     if (results[2].status === 'fulfilled') albums.value = results[2].value.albums
     if (results[3].status === 'fulfilled') desc.value = results[3].value
-    if (results[4].status === 'fulfilled') similar.value = results[4].value
+    if (results[4].status === 'fulfilled') {
+      similar.value = results[4].value
+      similarNeedsLogin.value = false
+    } else {
+      similar.value = []
+      const reason = results[4].reason
+      similarNeedsLogin.value = reason instanceof ApiError && reason.code === 301
+    }
     if (!artist.value && !topSongs.value.length) throw new Error('歌手信息加载失败')
     // 已登录时同步收藏状态
     if (auth.canWrite && artist.value) {
@@ -206,7 +216,15 @@ const TAB_DEFS: { key: Tab; label: string }[] = [
 
       <!-- 相似歌手 -->
       <template v-else>
-        <EmptyState v-if="!similar.length" text="暂无相似歌手" icon="user" />
+        <EmptyState
+          v-if="similarNeedsLogin"
+          text="相似歌手仅对正式登录用户开放"
+          icon="log-in"
+          data-testid="similar-needs-login"
+        >
+          <RouterLink to="/login" class="btn-primary">去登录</RouterLink>
+        </EmptyState>
+        <EmptyState v-else-if="!similar.length" text="暂无相似歌手" icon="user" />
         <div v-else class="grid grid-cols-4 gap-x-3 gap-y-5 sm:grid-cols-6 md:grid-cols-8">
           <ArtistCard v-for="a in similar" :key="a.id" :artist="a" />
         </div>
