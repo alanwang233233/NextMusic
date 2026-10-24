@@ -65,7 +65,7 @@ test.describe('视觉测试 - 桌面端', () => {
     await startPlayback(page)
     await page.getByLabel('打开播放页').click()
     await expect(page.getByTestId('now-playing')).toBeVisible()
-    await expect(page.getByText('E2E 第一句')).toBeVisible()
+    await expect(page.getByText('E2E 歌词行 1', { exact: true })).toBeVisible()
     await screenshot(page, 'desktop-now-playing')
   })
 

@@ -78,12 +78,17 @@ async function scrollToActive() {
   const box = lyricsBox.value
   if (!box || activeLine.value < 0) return
   const el = box.querySelector<HTMLElement>(`[data-line-index="${activeLine.value}"]`)
-  if (el) {
-    // 程序滚动触发的 scroll 事件不应被误判为用户手动滚动
-    programmaticScroll = true
-    window.setTimeout(() => (programmaticScroll = false), 600)
-    box.scrollTo({ top: el.offsetTop - box.clientHeight / 2, behavior: 'smooth' })
-  }
+  if (!el) return
+  // 用视口矩形计算目标位置：offsetTop 相对定位祖先而非滚动盒子，
+  // 直接使用会把顶部栏高度计入导致高亮行滚过头被遮挡。
+  // 目标 = 当前滚动量 + 行相对盒子的偏移 - 盒子半高 + 半行高（垂直居中）
+  const boxRect = box.getBoundingClientRect()
+  const lineRect = el.getBoundingClientRect()
+  const targetTop = box.scrollTop + lineRect.top - boxRect.top - boxRect.height / 2 + lineRect.height / 2
+  // 程序滚动触发的 scroll 事件不应被误判为用户手动滚动
+  programmaticScroll = true
+  window.setTimeout(() => (programmaticScroll = false), 600)
+  box.scrollTo({ top: Math.max(targetTop, 0), behavior: 'smooth' })
 }
 
 function onLyricsScroll() {
@@ -159,7 +164,7 @@ function toggleLike() {
 
           <div class="flex min-h-0 flex-1 flex-col gap-6 px-6 pb-6 lg:flex-row lg:items-center lg:gap-14 lg:px-16">
             <!-- 封面 -->
-            <div class="mx-auto w-full max-w-xs shrink-0 lg:mx-0 lg:w-[340px]">
+            <div class="mx-auto w-44 shrink-0 sm:w-60 lg:mx-0 lg:w-[340px]">
               <LazyImage
                 :src="cover"
                 :size="600"
@@ -184,7 +189,7 @@ function toggleLike() {
                 <button class="btn-icon" aria-label="下载" @click="onDownload">
                   <AppIcon name="download" :size="20" />
                 </button>
-                <span class="rounded-full border border-primary-700/70 px-2.5 py-1 text-[10px] font-medium text-primary-400">
+                <span class="whitespace-nowrap rounded-full border border-primary-700/70 px-2.5 py-1 text-[10px] font-medium text-primary-400">
                   {{ qualityLabel(settings.quality) }}
                 </span>
                 <span class="ml-auto text-[11px] tabular-nums text-zinc-500">
@@ -197,7 +202,7 @@ function toggleLike() {
             <div class="min-h-0 flex-1 lg:h-full">
               <div
                 ref="lyricsBox"
-                class="h-full max-h-[46vh] overflow-y-auto pr-2 lg:max-h-full lg:py-[35vh]"
+                class="h-full max-h-[38vh] overflow-y-auto px-4 py-10 lg:max-h-full lg:py-[35vh]"
                 @scroll.passive="onLyricsScroll"
                 data-testid="lyrics-box"
               >
@@ -211,7 +216,7 @@ function toggleLike() {
                     :key="i"
                     :data-line-index="i"
                     class="whitespace-pre-line py-2.5 text-sm leading-relaxed transition-all duration-300 sm:text-base"
-                    :class="i === activeLine ? 'scale-105 font-semibold text-white' : 'text-zinc-500'"
+                    :class="i === activeLine ? 'font-semibold text-white' : 'text-zinc-500'"
                     @click="player.seekTo(Math.min(line.time / (player.durationMs || 1), 1))"
                   >
                     {{ line.text }}

@@ -128,7 +128,15 @@ export async function setupMockRoutes(page: Page): Promise<MockState> {
   await page.route('**/lyric/new*', (route) =>
     route.fulfill(json({
       code: 200,
-      lrc: { lyric: '[00:00.10]E2E 第一句\n[01:00.00]E2E 第二句' },
+      // 40 行、每 2s 一行（贴近真实节奏）：seek 到中段后高亮行为滚动可达的中间行
+      lrc: {
+        lyric: Array.from({ length: 40 }, (_, i) => {
+          const ms = i * 2000 + 100
+          const m = Math.floor(ms / 60000)
+          const sec = (ms % 60000) / 1000
+          return `[${String(m).padStart(2, '0')}:${sec.toFixed(3).padStart(6, '0')}]E2E 歌词行 ${i + 1}`
+        }).join('\n'),
+      },
       tlyric: { lyric: '' },
       yrc: { lyric: '' },
     })),
