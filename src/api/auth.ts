@@ -50,17 +50,21 @@ export interface QrCheckResult {
   message?: string
 }
 
-/** 二维码状态检测：800 过期 801 等待 802 待确认 803 成功 */
+/**
+ * 二维码状态检测：800 过期 801 等待 802 待确认 803 成功（返回 cookie）。
+ * 这些状态码通过 body.code 表达（HTTP 仍为 200），需在 acceptCodes 中放行，
+ * 否则 803 的 cookie 会随异常被丢弃，导致“提示登录成功但不跳转”。
+ */
 export async function qrCheck(key: string): Promise<QrCheckResult> {
   try {
-    const body = await mainApi<{ code: number; cookie?: string; message?: string }>('/login/qr/check', { key }, { noCache: true })
-    return { code: body.code, cookie: body.cookie, message: body.message }
+    const body = await mainApi<{ code: number; cookie?: string; message?: string }>(
+      '/login/qr/check',
+      { key },
+      { noCache: true, acceptCodes: [800, 801, 802, 803] },
+    )
+    return { code: body.code, cookie: body.cookie || undefined, message: body.message }
   } catch (err) {
-    // 800 过期时接口可能直接抛出非 200 code
-    if (err && typeof err === 'object' && 'code' in err) {
-      const apiErr = err as { code: number; message?: string }
-      return { code: apiErr.code, message: apiErr.message }
-    }
+    // HTTP 层错误（网络/超时）继续抛出，由轮询方按失败处理
     throw err
   }
 }

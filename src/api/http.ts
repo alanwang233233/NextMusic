@@ -85,9 +85,14 @@ interface RequestOptions {
   method?: 'GET' | 'POST'
   /** 追加时间戳防缓存（POST 与轮询接口必需） */
   noCache?: boolean
+  /**
+   * 额外视为成功的业务 code。部分接口用非 200 的 code 表达状态
+   * （如 /login/qr/check 的 800/801/802/803），需要在响应里携带这些字段
+   */
+  acceptCodes?: number[]
 }
 
-async function parseBody(res: Response): Promise<Record<string, unknown>> {
+async function parseBody(res: Response, acceptCodes?: number[]): Promise<Record<string, unknown>> {
   let body: Record<string, unknown>
   try {
     body = (await res.json()) as Record<string, unknown>
@@ -95,7 +100,7 @@ async function parseBody(res: Response): Promise<Record<string, unknown>> {
     throw new ApiError(res.status, `接口返回了无法解析的内容（HTTP ${res.status}）`)
   }
   const code = typeof body.code === 'number' ? body.code : res.status
-  if (code !== 200) {
+  if (code !== 200 && !acceptCodes?.includes(code)) {
     // 301 表示未登录；501/502 等为接口错误。统一抛出，由调用方决定如何降级
     const defaultMsg = code === 301 ? '请先登录' : `请求失败（${code}）`
     throw new ApiError(code, String(body.message || body.msg || defaultMsg))
@@ -136,7 +141,7 @@ export async function mainApi<T = Record<string, unknown>>(
       init = { method: 'GET', signal: controller.signal }
     }
     const res = await fetch(url, init)
-    return (await parseBody(res)) as T
+    return (await parseBody(res, options.acceptCodes)) as T
   } catch (err) {
     if (err instanceof ApiError) throw err
     if (err instanceof DOMException && err.name === 'AbortError') {
