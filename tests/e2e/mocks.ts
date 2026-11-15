@@ -49,6 +49,10 @@ export interface MockState {
   likeCalls: string[]
   subscribeCalls: string[]
   song302Calls: number
+  /** JSON 直链接口（/song/url/v1 非 302，预缓存 Blob 化用）调用次数 */
+  songJsonCalls: number
+  /** 按歌曲 id 统计的 JSON 直链解析次数 */
+  songJsonCallsById: Record<number, number>
   outerCalls: number
   /** 按歌曲 id 统计的 OuterAPI 解析次数 */
   outerCallsById: Record<number, number>
@@ -59,7 +63,15 @@ export interface MockState {
  * 注意：Playwright 以“后注册优先”的顺序匹配，因此最先注册兜底路由。
  */
 export async function setupMockRoutes(page: Page): Promise<MockState> {
-  const state: MockState = { likeCalls: [], subscribeCalls: [], song302Calls: 0, outerCalls: 0, outerCallsById: {} }
+  const state: MockState = {
+    likeCalls: [],
+    subscribeCalls: [],
+    song302Calls: 0,
+    songJsonCalls: 0,
+    songJsonCallsById: {},
+    outerCalls: 0,
+    outerCallsById: {},
+  }
   const tone = fs.readFileSync(path.resolve('tests/e2e/fixtures/tone.wav'))
 
   // 兜底：任何非 localhost 且未显式 mock 的请求返回空成功，防止真实外呼。
@@ -145,7 +157,15 @@ export async function setupMockRoutes(page: Page): Promise<MockState> {
     route.fulfill(json({ code: 200, data: [{ songInfo: SONG_B, recommended: true, alg: 'e2e' }] })),
   )
 
-  // 播放：302 → 本地 wav（统一短音频，元数据校验通过）
+  // 播放：预缓存 Blob 化用的 JSON 直链接口（先注册，/song/url/v1/302 由后注册的更优先路由接管）
+  await page.route('**/song/url/v1*', (route) => {
+    state.songJsonCalls++
+    const url = new URL(route.request().url())
+    const id = Number(url.searchParams.get('id')) || 0
+    state.songJsonCallsById[id] = (state.songJsonCallsById[id] || 0) + 1
+    const pageOrigin = new URL(route.request().frame().url()).origin
+    return route.fulfill(json({ code: 200, data: [{ id, url: `${pageOrigin}/e2e/tone.wav`, type: 'mp3', size: tone.length, level: 'exhigh' }] }))
+  })
   await page.route('**/song/url/v1/302*', (route) => {
     state.song302Calls++
     // Location 必须指向页面 origin（生产中 302 到绝对 CDN 直链）；

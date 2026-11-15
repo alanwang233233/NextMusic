@@ -14,6 +14,21 @@ export async function fetchDownloadUrl(id: number, br = 999000): Promise<Downloa
   return body.data || {}
 }
 
+/** 新版获取歌曲 URL（JSON 直链，供预缓存 Blob 化拉取；试听片段时 freeTrialInfo 非空） */
+export interface SongUrlResult {
+  id?: number
+  url?: string | null
+  level?: string
+  type?: string
+  size?: number
+  freeTrialInfo?: { start?: number; end?: number } | null
+}
+
+export async function fetchSongDirectUrl(id: number, level: string): Promise<SongUrlResult> {
+  const body = await mainApi<{ data: SongUrlResult[] | null }>('/song/url/v1', { id, level })
+  return body.data?.[0] ?? {}
+}
+
 /** 获取歌词（新版，含逐字歌词） */
 export async function fetchLyric(id: number): Promise<LyricPayload> {
   const body = await mainApi<Record<string, any>>('/lyric/new', { id })

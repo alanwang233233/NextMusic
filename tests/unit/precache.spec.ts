@@ -2,8 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextSongPreloader } from '@/player/precache'
 import type { Song } from '@/types/models'
 
+vi.mock('@/api/song', () => ({
+  fetchSongDirectUrl: vi.fn(async (id: number, level: string) => ({
+    id,
+    url: 'http://cdn.example/direct.mp3',
+    level,
+    type: 'mp3',
+    size: 1,
+  })),
+}))
+
 vi.mock('@/api/outer', () => ({
-  fetchOuterSongUrl: vi.fn(async (id: number) => ({ id, url: `https://outer.example/${id}.mp3`, br: 320000, level: 'exhigh', size: 1 })),
+  fetchOuterSongUrl: vi.fn(async (id: number) => ({ id, url: 'http://outer.example/7.mp3', br: 320000, level: 'exhigh', size: 1 })),
 }))
 
 /** 可控假 Audio：手动派发 canplay / error，可设 duration */
@@ -49,15 +59,51 @@ const song: Song = {
   duration: 200_000,
 }
 
-describe('NextSongPreloader', () => {
-  beforeEach(() => {
+let blobSeq = 0
+let fetchMock: ReturnType<typeof vi.fn>
+let createObjectURL: ReturnType<typeof vi.fn>
+let revokeObjectURL: ReturnType<typeof vi.fn>
+let realCreate: typeof URL.createObjectURL | undefined
+let realRevoke: typeof URL.revokeObjectURL | undefined
+
+describe('NextSongPreloader（数据级 Blob 缓存）', () => {
+  beforeEach(async () => {
     FakeAudio.instances = []
+    blobSeq = 0
     nextSongPreloader.clear()
     vi.stubGlobal('Audio', FakeAudio as unknown as typeof Audio)
+    // jsdom 未实现 object URL；fetch 仅被预加载器的 Blob 拉取使用（api 层已模块级 mock）
+    createObjectURL = vi.fn(() => `blob:mock-${++blobSeq}`)
+    revokeObjectURL = vi.fn()
+    realCreate = URL.createObjectURL
+    realRevoke = URL.revokeObjectURL
+    URL.createObjectURL = createObjectURL as unknown as typeof URL.createObjectURL
+    URL.revokeObjectURL = revokeObjectURL as unknown as typeof URL.revokeObjectURL
+    fetchMock = vi.fn(async () => ({ ok: true, blob: async () => new Blob(['audio-bytes']) }))
+    vi.stubGlobal('fetch', fetchMock)
+    // 工厂 mock 的实现会跨用例残留，每个用例前显式重置
+    const { fetchSongDirectUrl } = await import('@/api/song')
+    vi.mocked(fetchSongDirectUrl).mockImplementation(async (id: number, level: string) => ({
+      id,
+      url: 'http://cdn.example/direct.mp3',
+      level,
+      type: 'mp3',
+      size: 1,
+    }))
+    const { fetchOuterSongUrl } = await import('@/api/outer')
+    vi.mocked(fetchOuterSongUrl).mockImplementation(async (id: number) => ({
+      id,
+      url: 'http://outer.example/7.mp3',
+      br: 320000,
+      level: 'exhigh',
+      size: 1,
+    }))
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    if (realCreate) URL.createObjectURL = realCreate
+    if (realRevoke) URL.revokeObjectURL = realRevoke
   })
 
   function lastProbe(): FakeAudio {
@@ -65,52 +111,96 @@ describe('NextSongPreloader', () => {
     return FakeAudio.instances[FakeAudio.instances.length - 1]!
   }
 
-  it('第一次尝试成功：缓存结果并可 take 取出（取出后清空）', async () => {
+  it('主路径：JSON 直链拉成 Blob，播放地址为 blob: URL（切歌零请求）', async () => {
     const promise = nextSongPreloader.preload(song, 'exhigh')
     await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(1))
-    const probe = lastProbe()
-    expect(probe.src).toContain('/song/url/v1/302?id=7&level=exhigh')
-    probe.duration = 200
-    probe.dispatch('canplay')
+    // Blob 拉取的是 JSON 直链
+    expect(fetchMock).toHaveBeenCalledWith('http://cdn.example/direct.mp3')
+    // 探针加载的是 object URL
+    expect(lastProbe().src).toBe('blob:mock-1')
+    lastProbe().duration = 200
+    lastProbe().dispatch('canplay')
     const outcome = await promise
     expect(outcome).not.toBeNull()
     expect(outcome!.songId).toBe(7)
+    expect(outcome!.url).toBe('blob:mock-1')
     expect(outcome!.source).toBe('main302')
-
+    expect(outcome!.blob).toBe(true)
+    // 可 take 取出（取出后清空）
     expect(nextSongPreloader.take(7)).not.toBeNull()
     expect(nextSongPreloader.take(7)).toBeNull()
   })
 
-  it('第一次尝试报错 → 直接走 OuterAPI', async () => {
+  it('JSON 返回试听片段（freeTrialInfo）→ 跳过 Blob 候选，走 302 元素流', async () => {
+    const { fetchSongDirectUrl } = await import('@/api/song')
+    vi.mocked(fetchSongDirectUrl).mockImplementation(async () => ({ id: 7, url: 'http://cdn.example/trial.mp3', freeTrialInfo: { start: 0, end: 30 } }))
+    const promise = nextSongPreloader.preload(song, 'standard')
+    await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(1))
+    // 未发生 Blob 拉取；探针直连 302 端点
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(lastProbe().src).toContain('/song/url/v1/302?id=7')
+    lastProbe().duration = 200
+    lastProbe().dispatch('canplay')
+    const outcome = await promise
+    expect(outcome!.source).toBe('main302')
+    expect(outcome!.blob).toBeFalsy()
+    expect(outcome!.url).toContain('/song/url/v1/302?id=7')
+  })
+
+  it('Blob 拉取失败 → 回退存 JSON 直链（元素直连 CDN，不再经 302）', async () => {
+    fetchMock.mockImplementation(async () => {
+      throw new TypeError('Failed to fetch')
+    })
     const promise = nextSongPreloader.preload(song, 'exhigh')
     await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(1))
-    lastProbe().dispatch('error')
-    await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(2))
-    // 第二步 OuterAPI 直链
-    expect(lastProbe().src).toContain('outer.example/7.mp3')
+    expect(lastProbe().src).toBe('http://cdn.example/direct.mp3')
     lastProbe().duration = 200
-    lastProbe().dispatch('canplaythrough')
+    lastProbe().dispatch('canplay')
     const outcome = await promise
-    expect(outcome!.source).toBe('outer')
+    expect(outcome!.url).toBe('http://cdn.example/direct.mp3')
+    expect(outcome!.blob).toBeFalsy()
   })
 
-  it('元数据时长过短（试听片段）→ 升级 OuterAPI', async () => {
-    const promise = nextSongPreloader.preload(song, 'standard')
+  it('JSON 接口失败 → 走 302 元素流（原有行为兜底）', async () => {
+    const { fetchSongDirectUrl } = await import('@/api/song')
+    vi.mocked(fetchSongDirectUrl).mockImplementation(async () => {
+      throw new Error('api down')
+    })
+    const promise = nextSongPreloader.preload(song, 'exhigh')
     await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(1))
-    lastProbe().duration = 30 // 期望 200s，试听 30s
+    expect(lastProbe().src).toContain('/song/url/v1/302?id=7')
+    lastProbe().duration = 200
     lastProbe().dispatch('canplay')
+    const outcome = await promise
+    expect(outcome!.url).toContain('/song/url/v1/302?id=7')
+    expect(outcome!.blob).toBeFalsy()
+  })
+
+  it('主候选试听过短 → 302 也过短 → OuterAPI 直链 Blob 化', async () => {
+    const promise = nextSongPreloader.preload(song, 'standard')
+    // 第一候选：JSON 直链 Blob（试听 30s）
+    await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(1))
+    lastProbe().duration = 30
+    lastProbe().dispatch('canplay')
+    // 第二候选：302 元素流（同样试听 30s）
     await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(2))
-    // OuterAPI 直链
-    expect(lastProbe().src).toContain('outer.example/7.mp3')
+    expect(lastProbe().src).toContain('/song/url/v1/302?id=7')
+    lastProbe().duration = 30
+    lastProbe().dispatch('error')
+    // 第三候选：OuterAPI 直链 Blob（完整时长）
+    await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(3))
+    expect(fetchMock).toHaveBeenCalledWith('http://outer.example/7.mp3')
+    expect(lastProbe().src).toBe('blob:mock-2')
     lastProbe().duration = 200
     lastProbe().dispatch('canplay')
     const outcome = await promise
     expect(outcome!.source).toBe('outer')
+    expect(outcome!.blob).toBe(true)
   })
 
-  it('全部尝试失败返回 null', async () => {
+  it('全部候选失败返回 null', async () => {
     const promise = nextSongPreloader.preload(song, 'standard')
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 3; i++) {
       await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(i + 1))
       lastProbe().dispatch('error')
     }
@@ -133,5 +223,62 @@ describe('NextSongPreloader', () => {
     const outcome = await second
     expect(outcome!.songId).toBe(8)
     expect(await first).toBeNull()
+  })
+
+  it('切歌 handoff：保留当前与上一代 blob，更早的自动 revoke', async () => {
+    // 第一首：blob:mock-1
+    const p1 = nextSongPreloader.preload(song, 'exhigh')
+    await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(1))
+    lastProbe().duration = 200
+    lastProbe().dispatch('canplay')
+    await p1
+    expect(nextSongPreloader.take(7)!.url).toBe('blob:mock-1')
+    // 第二首：blob:mock-2
+    const other: Song = { ...song, id: 8 }
+    const p2 = nextSongPreloader.preload(other, 'exhigh')
+    await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(2))
+    lastProbe().duration = 200
+    lastProbe().dispatch('canplay')
+    await p2
+    expect(nextSongPreloader.take(8)!.url).toBe('blob:mock-2')
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+    // 第三首：blob:mock-3 → 第一代 blob:mock-1 被释放
+    const third: Song = { ...song, id: 9 }
+    const p3 = nextSongPreloader.preload(third, 'exhigh')
+    await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(3))
+    lastProbe().duration = 200
+    lastProbe().dispatch('canplay')
+    await p3
+    expect(nextSongPreloader.take(9)!.url).toBe('blob:mock-3')
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock-1')
+    // 播放中的 blob:mock-3 与上一代 blob:mock-2 不释放
+    expect(revokeObjectURL).not.toHaveBeenCalledWith('blob:mock-2')
+    expect(revokeObjectURL).not.toHaveBeenCalledWith('blob:mock-3')
+  })
+
+  it('store 内同 id 结果被替换时 revoke 旧 blob', async () => {
+    const p1 = nextSongPreloader.preload(song, 'exhigh')
+    await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(1))
+    lastProbe().duration = 200
+    lastProbe().dispatch('canplay')
+    await p1
+    // 再次预缓存同一首：旧 blob:mock-1 被替换并释放
+    const p2 = nextSongPreloader.preload(song, 'exhigh')
+    await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(2))
+    lastProbe().duration = 200
+    lastProbe().dispatch('canplay')
+    const outcome = await p2
+    expect(outcome!.url).toBe('blob:mock-2')
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock-1')
+  })
+
+  it('clear() 释放尚未取出的 blob', async () => {
+    const p = nextSongPreloader.preload(song, 'exhigh')
+    await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(1))
+    lastProbe().duration = 200
+    lastProbe().dispatch('canplay')
+    await p
+    nextSongPreloader.clear()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock-1')
   })
 })

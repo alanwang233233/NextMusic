@@ -147,7 +147,7 @@ export const usePlayerStore = defineStore('player', {
       const engine = getEngine(engineCallbacksForStore())
       engine.setVolume(this.volume)
       try {
-        // 命中预缓存则直接使用已缓冲的地址（第 0 步），失败后引擎继续常规降级链
+        // 命中预缓存则直接使用已缓存地址（blob: 数据级缓存或直链，第 0 步，零网络请求），失败后引擎继续常规降级链
         const preloaded = nextSongPreloader.take(song.id) ?? undefined
         await engine.play(song, settings.quality, preloaded)
       } catch {

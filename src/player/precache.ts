@@ -1,4 +1,6 @@
-import { ATTEMPT_CHAIN, isTooShort, resolveAttempt, type UrlResolution } from './engine'
+import { fetchOuterSongUrl } from '@/api/outer'
+import { fetchSongDirectUrl } from '@/api/song'
+import { isTooShort, main302Url } from './engine'
 import type { Song, UrlSource } from '@/types/models'
 
 /** 单次预加载探测的超时 */
@@ -6,15 +8,56 @@ const PROBE_TIMEOUT_MS = 10_000
 
 export interface PreloadOutcome {
   songId: number
+  /** 播放地址：blob: URL（数据级缓存）或直链 / 302 端点地址 */
   url: string
   source: UrlSource
+  /** true 表示音频数据已完整缓存在内存（blob: URL），切歌零网络请求 */
+  blob?: boolean
+}
+
+/** https 页面下把 http 直链升级为 https（避免混合内容拦截）；其余原样返回 */
+function upgradeToFetchable(url: string): string {
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && url.startsWith('http://')) {
+    return url.replace(/^http:\/\//, 'https://')
+  }
+  return url
+}
+
+/** 全量拉取音频为 Blob 并生成 object URL；失败返回 null（回退为元素直连） */
+async function fetchAsBlobUrl(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const blob = await res.blob()
+    return URL.createObjectURL(blob)
+  } catch {
+    return null
+  }
+}
+
+function revokeBlobUrl(url: string | null | undefined): void {
+  if (url && url.startsWith('blob:')) {
+    try {
+      URL.revokeObjectURL(url)
+    } catch {
+      /* 忽略 */
+    }
+  }
+}
+
+interface Candidate {
+  url: string
+  source: UrlSource
+  /** 是否可 Blob 化拉取（302 端点会被风控拒绝 fetch，只能走媒体元素） */
+  blobbable: boolean
 }
 
 /**
- * 下一曲预缓存器：
- * 1. 按常规降级链解析下一曲的播放地址
- * 2. 用隐藏 Audio（preload=auto）预加载并验证（时长校验防试听片段）
- * 3. 结果缓存起来，真正切歌时由引擎直接命中第 0 步，绕过解析与缓冲等待
+ * 下一曲预缓存器（数据级）：
+ * 1. 按候选链解析下一曲直链：主 API JSON 直链（可 Blob 化）→ 302 端点（媒体元素流）→ OuterAPI 直链（可 Blob 化）
+ * 2. 可 Blob 化的候选优先 fetch 整段音频缓存为 blob: URL，失败回退为元素直连
+ * 3. 用隐藏 Audio 验证时长（防试听片段），结果缓存
+ * 4. 真正切歌时引擎第 0 步直接命中 blob: URL——零网络请求，即点即播
  */
 class NextSongPreloader {
   private probe: HTMLAudioElement | null = null
@@ -22,11 +65,20 @@ class NextSongPreloader {
   private probeSettle: ((ok: boolean) => void) | null = null
   private token = 0
   private store = new Map<number, PreloadOutcome>()
+  /** 已交出的 blob URL（新→旧，最多保留 2 个：播放中的 + 刚切走的） */
+  private handoff: string[] = []
 
   /** 取出并移除某首歌的预缓存结果 */
   take(songId: number): PreloadOutcome | null {
     const hit = this.store.get(songId) ?? null
-    if (hit) this.store.delete(songId)
+    if (hit) {
+      this.store.delete(songId)
+      if (hit.blob) {
+        this.handoff.unshift(hit.url)
+        // 只保留当前与上一代（上一代仍可能是切歌瞬间 audio 元素的 src），更早的释放
+        while (this.handoff.length > 2) revokeBlobUrl(this.handoff.pop())
+      }
+    }
     return hit
   }
 
@@ -35,35 +87,76 @@ class NextSongPreloader {
   }
 
   clear(): void {
+    for (const outcome of this.store.values()) revokeBlobUrl(outcome.url)
     this.store.clear()
+    // 交出记录一并丢弃（播放中的 blob 交给浏览器，不做 revoke）
+    this.handoff = []
     this.destroyProbe()
   }
 
   /**
-   * 预缓存一首歌。返回成功结果；全部尝试失败返回 null。
+   * 预缓存一首歌。返回成功结果；全部候选失败返回 null。
    * 新的 preload 调用会取消进行中的旧任务（token 隔离）。
    */
   async preload(song: Song, level: string): Promise<PreloadOutcome | null> {
     const myToken = ++this.token
     this.destroyProbe()
-    for (const kind of ATTEMPT_CHAIN) {
+    for (const thunk of this.candidateThunks(song, level)) {
       if (myToken !== this.token) return null
-      let resolution: UrlResolution
-      try {
-        resolution = await resolveAttempt(kind, song, level)
-      } catch {
-        continue
+      const candidate = await thunk()
+      if (myToken !== this.token) return null
+      if (!candidate) continue
+      let playUrl = candidate.url
+      if (candidate.blobbable) {
+        const blobUrl = await fetchAsBlobUrl(candidate.url)
+        if (myToken !== this.token) return null
+        if (blobUrl) playUrl = blobUrl
       }
-      if (myToken !== this.token) return null
-      const ok = await this.probeUrl(resolution.url, song)
+      const ok = await this.probeUrl(playUrl, song)
       if (myToken !== this.token) return null
       if (ok) {
-        const outcome: PreloadOutcome = { songId: song.id, url: resolution.url, source: resolution.source }
+        const old = this.store.get(song.id)
+        if (old && old.url !== playUrl) revokeBlobUrl(old.url)
+        const outcome: PreloadOutcome = {
+          songId: song.id,
+          url: playUrl,
+          source: candidate.source,
+          blob: playUrl.startsWith('blob:'),
+        }
         this.store.set(song.id, outcome)
         return outcome
       }
     }
     return null
+  }
+
+  /** 候选直链（按优先级懒求值，避免无谓消耗 OuterAPI） */
+  private candidateThunks(song: Song, level: string): (() => Promise<Candidate | null>)[] {
+    return [
+      async () => {
+        try {
+          const direct = await fetchSongDirectUrl(song.id, level)
+          // 试听片段直接放弃该候选，不浪费下载
+          if (direct.url && !direct.freeTrialInfo) {
+            return { url: upgradeToFetchable(direct.url), source: 'main302', blobbable: true }
+          }
+        } catch {
+          /* 主接口不可用时走下一候选 */
+        }
+        return null
+      },
+      // 302 端点：带 cookie 的元素流地址，媒体元素可跟随（fetch 会被风控拒绝），作为兜底
+      async () => ({ url: main302Url(song.id, level), source: 'main302', blobbable: false }),
+      async () => {
+        try {
+          const outer = await fetchOuterSongUrl(song.id, level)
+          if (outer.url) return { url: upgradeToFetchable(outer.url), source: 'outer', blobbable: true }
+        } catch {
+          /* OuterAPI 不可用 */
+        }
+        return null
+      },
+    ]
   }
 
   /** 用隐藏 audio 预加载地址并验证可播（元数据时长过短视为失败） */
