@@ -250,6 +250,34 @@ describe('player store', () => {
     expect(player.peekNextSong()?.id).toBe(9)
   })
 
+  it('单曲就位播放不替换播放列表，上一首/下一首跟随播放列表', async () => {
+    const player = usePlayerStore()
+    // 播放列表：1,2,3，当前为 2
+    player.playQueue([makeSong(1), makeSong(2), makeSong(3)], 1)
+    // 从别处（其他歌单/搜索）播放歌曲 9：插入当前曲目之后，播放列表不被歌单替换
+    player.playSongNow(makeSong(9))
+    expect(player.queue.map((s) => s.id)).toEqual([1, 2, 9, 3])
+    expect(player.currentSong?.id).toBe(9)
+    // 上一首/下一首跟随播放列表，而不是某张歌单
+    player.next()
+    expect(player.currentSong?.id).toBe(3)
+    player.prev()
+    expect(player.currentSong?.id).toBe(9)
+    player.prev()
+    expect(player.currentSong?.id).toBe(2)
+  })
+
+  it('播放全部显式替换播放列表（歌单上下文）', () => {
+    const player = usePlayerStore()
+    player.playQueue([makeSong(1), makeSong(2)], 0)
+    player.playSongNow(makeSong(9))
+    expect(player.queue.map((s) => s.id)).toEqual([1, 9, 2])
+    // 播放全部：以新歌单重建播放列表
+    player.playQueue([makeSong(7), makeSong(8)], 0)
+    expect(player.queue.map((s) => s.id)).toEqual([7, 8])
+    expect(player.currentSong?.id).toBe(7)
+  })
+
   it('playAt 使用预缓存地址直接播放', async () => {
     const player = usePlayerStore()
     const preloaded = { songId: 2, url: 'https://x/2.mp3', source: 'main302' as const }

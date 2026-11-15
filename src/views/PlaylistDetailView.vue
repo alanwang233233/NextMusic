@@ -5,7 +5,7 @@ import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 import { guardWrite } from '@/composables/useWriteAction'
-import { fetchPlaylistDetail, fetchSongsDetail, subscribePlaylist, updatePlaylist, manipulatePlaylistTracks } from '@/api/playlist'
+import { fetchPlaylistDetail, fetchSongsDetail, subscribePlaylist, updatePlaylist, manipulatePlaylistTracks, SONG_DETAIL_CHUNK_SIZE } from '@/api/playlist'
 import { formatCount } from '@/utils/format'
 import type { Playlist, Song } from '@/types/models'
 import PageLoading from '@/components/ui/PageLoading.vue'
@@ -26,6 +26,8 @@ const loading = ref(true)
 const error = ref(false)
 const info = ref<Playlist | null>(null)
 const songs = ref<Song[]>([])
+/** 全量歌曲分块加载进度（null 表示已加载完毕或不适用） */
+const songsLoadTotal = ref<number | null>(null)
 const subscribing = ref(false)
 
 const editOpen = ref(false)
@@ -50,12 +52,21 @@ async function load() {
     editDesc.value = detail.info.description || ''
     editTags.value = (detail.info.tags || []).join(';')
 
-    // tracks 可能不完整（未登录仅返回部分），用 trackIds 补全
+    // tracks 可能不完整（未登录仅返回部分），按 trackIds 分块补全全部歌曲，无数量上限
     if (detail.trackIds.length > detail.tracks.length) {
-      const full = await fetchSongsDetail(detail.trackIds.slice(0, 1000))
-      songs.value = full
+      songs.value = detail.tracks
+      songsLoadTotal.value = detail.trackIds.length
+      const trackIds = detail.trackIds
+      for (let i = detail.tracks.length; i < trackIds.length; i += SONG_DETAIL_CHUNK_SIZE) {
+        const chunk = await fetchSongsDetail(trackIds.slice(i, i + SONG_DETAIL_CHUNK_SIZE))
+        // 请求期间切换了歌单：丢弃过期数据
+        if (playlistId.value !== Number(route.params.id)) return
+        songs.value.push(...chunk)
+      }
+      songsLoadTotal.value = null
     } else {
       songs.value = detail.tracks
+      songsLoadTotal.value = null
     }
   } catch (err) {
     error.value = true
@@ -75,8 +86,9 @@ function playAll() {
   player.playQueue(songs.value, 0)
 }
 
-function onPlay(song: Song, index: number) {
-  player.playQueue(songs.value, index)
+/** 单曲点击：就位播放（不替换播放列表，上一首/下一首跟随播放列表）；已在队列中则跳到该曲 */
+function onPlay(song: Song) {
+  player.playSongNow(song)
 }
 
 async function toggleSubscribe() {
@@ -221,6 +233,9 @@ async function removeSong(song: Song) {
           @heart-mode="(song: Song) => heart.start(song, playlistId)"
           @remove="removeSong"
         />
+        <p v-if="songsLoadTotal !== null" class="mt-3 text-center text-xs text-zinc-500" data-testid="songs-load-progress">
+          正在加载全部歌曲（{{ songs.length }} / {{ songsLoadTotal }}）
+        </p>
       </div>
 
       <!-- 编辑弹窗 -->

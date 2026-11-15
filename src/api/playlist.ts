@@ -22,24 +22,35 @@ export async function fetchPlaylistDetail(id: number): Promise<PlaylistDetail> {
   }
 }
 
-/** 批量获取歌曲详情（ids 用逗号分隔） */
+/** 单次 /song/detail 请求的最大 id 数（控制 URL 长度） */
+export const SONG_DETAIL_CHUNK_SIZE = 500
+
+/** 批量获取歌曲详情（ids 用逗号分隔）；超过 500 个自动分块请求 */
 export async function fetchSongsDetail(ids: number[]): Promise<Song[]> {
   if (!ids.length) return []
-  const body = await mainApi<{ songs: Record<string, any>[] }>('/song/detail', { ids: ids.join(',') })
-  const rawSongs = body.songs || []
-  const byId = new Map<number, Song>()
-  for (const raw of rawSongs) {
-    const song = normSong(raw)
-    byId.set(song.id, song)
+  const result: Song[] = []
+  for (let i = 0; i < ids.length; i += SONG_DETAIL_CHUNK_SIZE) {
+    const chunk = ids.slice(i, i + SONG_DETAIL_CHUNK_SIZE)
+    const body = await mainApi<{ songs: Record<string, any>[] }>('/song/detail', { ids: chunk.join(',') })
+    const byId = new Map<number, Song>()
+    for (const raw of body.songs || []) {
+      const song = normSong(raw)
+      byId.set(song.id, song)
+    }
+    // 以传入顺序为准，缺失的补占位
+    for (const id of chunk) {
+      result.push(
+        byId.get(id) || ({
+          id,
+          name: '歌曲信息缺失',
+          artists: [],
+          album: { id: 0, name: '' },
+          duration: 0,
+        } as Song),
+      )
+    }
   }
-  // trackIds 顺序为准，缺失的补占位
-  return ids.map((id) => byId.get(id) || ({
-    id,
-    name: '歌曲信息缺失',
-    artists: [],
-    album: { id: 0, name: '' },
-    duration: 0,
-  } as Song))
+  return result
 }
 
 /** 更新歌单（名称 + 描述 + 标签一次性提交） */

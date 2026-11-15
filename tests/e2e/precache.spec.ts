@@ -26,7 +26,7 @@ test.describe('预缓存（播放进度过半自动触发）', () => {
       .toContain('下一首已缓存')
   })
 
-  test('手动切歌直接命中预缓存（不再为该曲发起解析请求）', async ({ page }) => {
+  test('播放全部建立歌单队列后，手动切歌直接命中预缓存（不再为该曲发起解析请求）', async ({ page }) => {
     const state: MockState = await setupMockRoutes(page)
     // Song B 的 302 一律失败 → 其预缓存只能通过 OuterAPI 解析出直链
     await page.route('**/song/url/v1/302*', (route) => {
@@ -41,7 +41,8 @@ test.describe('预缓存（播放进度过半自动触发）', () => {
 
     await page.goto('/playlist/1')
     await expect(page.getByTestId('play-all')).toBeVisible({ timeout: 10_000 })
-    await page.getByLabel('播放 E2E Song A').click()
+    // 播放全部：以整个歌单重建播放列表（队列 = [A, B]）
+    await page.getByTestId('play-all').click()
     await expect(page.getByTestId('play-toggle')).toHaveAttribute('aria-label', '暂停', { timeout: 20_000 })
 
     // 等待 Song B 预缓存完成（走 OuterAPI 解析）
