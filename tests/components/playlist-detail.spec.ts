@@ -153,6 +153,24 @@ describe('PlaylistDetailView 播放行为', () => {
     expect(wrapper.text()).toContain('歌单歌曲-600')
   })
 
+  it('空队列单击歌曲：以整个歌单建立播放列表（预缓存回归：下一曲须有真实下一首）', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await flushPromises()
+
+    const player = usePlayerStore()
+    expect(player.queue).toHaveLength(0)
+    // 空播放列表时单击歌曲 101：应以整个歌单建立播放列表
+    await wrapper.find('button[aria-label="播放 歌单歌曲-101"]').trigger('click')
+    await flushPromises()
+
+    expect(player.queue.map((s) => s.id)).toEqual([101, 102, 103])
+    expect(player.currentSong?.id).toBe(101)
+    // 下一曲 = 歌单里的下一首 102（而不是回绕到自己）
+    player.next()
+    expect(player.currentSong?.id).toBe(102)
+  })
+
   it('单曲点击就位播放：不替换既有播放列表（上一首/下一首跟随播放列表）', async () => {
     const wrapper = mountView()
     await flushPromises()

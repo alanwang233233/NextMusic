@@ -160,6 +160,37 @@ describe('player store', () => {
     expect(player.queue[1]?.id).toBe(9)
   })
 
+  it('playSongNow 空队列带浏览上下文：以上下文建立播放列表（预缓存回归：不得自预载当前曲）', async () => {
+    const player = usePlayerStore()
+    expect(player.queue).toHaveLength(0)
+    player.playSongNow(makeSong(102), [makeSong(101), makeSong(102), makeSong(103)])
+    await vi.waitFor(() => player.index === 1)
+    // 队列 = 整个歌单，而非只有被点的单曲；"下一曲"有真实的下一首
+    expect(player.queue.map((s) => s.id)).toEqual([101, 102, 103])
+    expect(player.currentSong?.id).toBe(102)
+
+    // 进度过半 → 预缓存预载真实的下一曲 103，而不是回绕自预载 102
+    player.playing = true
+    player.durationMs = 200_000
+    preloadMock.mockResolvedValue({ songId: 103, url: 'https://x/103.mp3', source: 'main302' })
+    const callbacks = buildEngineCallbacks()
+    callbacks.onTimeUpdate(100_000, 200_000)
+    await vi.waitFor(() => preloadMock.mock.calls.length > 0)
+    expect(preloadMock.mock.calls[0]![0]).toMatchObject({ id: 103 })
+
+    // 下一曲跟随上下文队列
+    player.next()
+    expect(player.currentSong?.id).toBe(103)
+  })
+
+  it('playSongNow 空队列无上下文：保留单曲就位行为', async () => {
+    const player = usePlayerStore()
+    player.playSongNow(makeSong(9))
+    await vi.waitFor(() => player.index === 0)
+    expect(player.queue.map((s) => s.id)).toEqual([9])
+    expect(player.currentSong?.id).toBe(9)
+  })
+
   it('removeFromQueue 调整当前索引', () => {
     const player = usePlayerStore()
     player.playQueue([makeSong(1), makeSong(2), makeSong(3)], 2)

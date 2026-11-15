@@ -106,13 +106,25 @@ export const usePlayerStore = defineStore('player', {
       void this.playAt(startIndex)
     },
 
-    /** 追加到队列尾部并播放 */
-    playSongNow(song: Song) {
+    /** 就位播放：已在队列中则跳到该曲；空队列且带浏览上下文（如正在浏览的歌单）
+     * 时以上下文建立播放列表，否则插入当前曲目之后（不替换既有队列） */
+    playSongNow(song: Song, context: Song[] = []) {
       const existing = this.queue.findIndex((s) => s.id === song.id)
       if (existing >= 0) {
         this.fmMode = false
         void this.playAt(existing)
         return
+      }
+      // 空队列 + 浏览上下文：以上下文建立队列——"下一曲"与过半预缓存才有真实的下一首，
+      // 否则单曲队列会回绕自预载当前曲（预缓存失效回归）
+      if (!this.queue.length && context.length) {
+        const contextIndex = context.findIndex((s) => s.id === song.id)
+        if (contextIndex >= 0) {
+          this.queue = [...context]
+          this.fmMode = false
+          void this.playAt(contextIndex)
+          return
+        }
       }
       const insertAt = this.index + 1
       this.queue.splice(insertAt, 0, song)

@@ -86,9 +86,10 @@ function playAll() {
   player.playQueue(songs.value, 0)
 }
 
-/** 单曲点击：就位播放（不替换播放列表，上一首/下一首跟随播放列表）；已在队列中则跳到该曲 */
+/** 单曲点击：就位播放；空播放列表时以整个歌单建立队列（下一曲/预缓存才有真实的下一首），
+ * 已有播放列表则只插入当前曲目之后，不替换 */
 function onPlay(song: Song) {
-  player.playSongNow(song)
+  player.playSongNow(song, songs.value)
 }
 
 async function toggleSubscribe() {
