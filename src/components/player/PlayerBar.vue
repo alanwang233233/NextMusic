@@ -101,7 +101,7 @@ function setVolume(v: number) {
 
           <div class="flex items-center gap-3 px-3 py-2.5 sm:px-4">
             <!-- 歌曲信息 -->
-            <button class="flex min-w-0 flex-1 items-center gap-3 text-left lg:w-64 lg:flex-none" aria-label="打开播放页" @click="player.showNowPlaying = true">
+            <button class="flex min-w-0 flex-1 items-center gap-3 overflow-hidden text-left lg:w-64 lg:flex-none" aria-label="打开播放页" @click="player.showNowPlaying = true">
               <div class="relative shrink-0">
                 <LazyImage :src="player.currentSong?.album.picUrl" :size="80" rounded="rounded-lg" class="h-11 w-11" />
                 <div class="absolute inset-0 flex items-center justify-center rounded-lg bg-black/50 opacity-0 transition hover:opacity-100">
