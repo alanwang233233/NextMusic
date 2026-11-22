@@ -281,4 +281,49 @@ describe('NextSongPreloader（数据级 Blob 缓存）', () => {
     nextSongPreloader.clear()
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock-1')
   })
+
+  it('takeKeep：保留条目可重复取用（loop 跨轮复用）', async () => {
+    const p = nextSongPreloader.preload(song, 'exhigh')
+    await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(1))
+    lastProbe().duration = 200
+    lastProbe().dispatch('canplay')
+    await p
+    expect(nextSongPreloader.takeKeep(7)!.url).toBe('blob:mock-1')
+    expect(nextSongPreloader.takeKeep(7)!.url).toBe('blob:mock-1')
+    // 条目不删除，peek 仍可见（重播过半 peek 命中 → 零重复 fetch）
+    expect(nextSongPreloader.peek(7)).not.toBeNull()
+  })
+
+  it('evictExcept：清除其他歌曲条目并 revoke blob，保留指定条目', async () => {
+    const p1 = nextSongPreloader.preload(song, 'exhigh') // id 7
+    await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(1))
+    lastProbe().duration = 200
+    lastProbe().dispatch('canplay')
+    await p1
+    const other: Song = { ...song, id: 8 }
+    const p2 = nextSongPreloader.preload(other, 'exhigh')
+    await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(2))
+    lastProbe().duration = 200
+    lastProbe().dispatch('canplay')
+    await p2
+    nextSongPreloader.evictExcept(8)
+    expect(nextSongPreloader.peek(7)).toBeNull()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock-1')
+    expect(nextSongPreloader.peek(8)).not.toBeNull()
+  })
+
+  it('store 超过 4 条时淘汰最旧条目并 revoke', async () => {
+    const ids = [7, 8, 9, 10, 11]
+    for (const id of ids) {
+      const target: Song = { ...song, id }
+      const p = nextSongPreloader.preload(target, 'exhigh')
+      await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(ids.indexOf(id) + 1))
+      lastProbe().duration = 200
+      lastProbe().dispatch('canplay')
+      await p
+    }
+    expect(nextSongPreloader.peek(7)).toBeNull() // 最旧的 7 被淘汰
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock-1')
+    expect(nextSongPreloader.peek(11)).not.toBeNull()
+  })
 })

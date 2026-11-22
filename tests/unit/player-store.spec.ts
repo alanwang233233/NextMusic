@@ -33,12 +33,16 @@ import type { PreloadOutcome } from '@/player/precache'
 const preloadMock = vi.fn(async (_song: unknown, _level: string): Promise<PreloadOutcome | null> => null)
 const preloadPeek = vi.fn((_id: number): PreloadOutcome | null => null)
 const preloadTake = vi.fn((_id: number): PreloadOutcome | null => null)
+const preloadTakeKeep = vi.fn((_id: number): PreloadOutcome | null => null)
+const preloadEvictExcept = vi.fn((_id: number): void => undefined)
 
 vi.mock('@/player/precache', () => ({
   nextSongPreloader: {
     preload: (...args: unknown[]) => preloadMock(...(args as [unknown, string])),
     peek: (...args: unknown[]) => preloadPeek(...(args as [number])),
     take: (...args: unknown[]) => preloadTake(...(args as [number])),
+    takeKeep: (...args: unknown[]) => preloadTakeKeep(...(args as [number])),
+    evictExcept: (...args: unknown[]) => preloadEvictExcept(...(args as [number])),
     clear: vi.fn(),
   },
 }))
@@ -430,5 +434,48 @@ describe('player store', () => {
     expect(player.queue[0]?.id).toBe(102)
     expect(player.queue.map((s) => s.id).sort((a, b) => a - b)).toEqual([101, 102, 103])
     expect(player.currentSong?.id).toBe(102)
+  })
+
+  it('loop 模式：预载当前曲自己，曲终重播复用 blob 不重复 fetch，切歌清理旧条目', async () => {
+    const player = usePlayerStore()
+    player.playQueue([makeSong(1), makeSong(2)], 0)
+    player.setMode('loop')
+    player.playing = true
+    player.durationMs = 200_000
+    preloadMock.mockResolvedValue({ songId: 1, url: 'blob:loop-1', source: 'main302' })
+    const callbacks = buildEngineCallbacks()
+    // 第一遍播放过半 → 预载当前曲自己
+    callbacks.onTimeUpdate(100_000, 200_000)
+    await vi.waitFor(() => preloadMock.mock.calls.length > 0)
+    expect(preloadMock.mock.calls[0]![0]).toMatchObject({ id: 1 })
+    const preloadCallsAfterFirstPass = preloadMock.mock.calls.length
+
+    // 曲终重播：takeKeep 命中，blob 直接交给引擎（按 id 感知模拟真实取用：仅歌曲 1 有缓存条目）
+    preloadTakeKeep.mockImplementation((id: number) =>
+      id === 1 ? { songId: 1, url: 'blob:loop-1', source: 'main302' } : null,
+    )
+    await player.playAt(0)
+    expect(fakeEngine.play).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 1 }),
+      expect.any(String),
+      expect.objectContaining({ url: 'blob:loop-1' }),
+    )
+
+    // 重播过半：peek 命中保留条目 → 不再发起新预载
+    preloadPeek.mockReturnValue({ songId: 1, url: 'blob:loop-1', source: 'main302' })
+    callbacks.onTimeUpdate(150_000, 200_000)
+    await vi.waitFor(() => player.preloadedNextFor === 1)
+    expect(preloadMock.mock.calls.length).toBe(preloadCallsAfterFirstPass)
+
+    // 切到别的歌：loop 下清理除当前曲外的残留条目
+    await player.playAt(1)
+    expect(preloadEvictExcept).toHaveBeenCalledWith(2)
+    expect(fakeEngine.play).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 2 }),
+      expect.any(String),
+      undefined,
+    )
+    preloadTakeKeep.mockReturnValue(null)
+    preloadPeek.mockReturnValue(null)
   })
 })

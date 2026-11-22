@@ -82,6 +82,26 @@ class NextSongPreloader {
     return hit
   }
 
+  /** 保留式取用：命中不删除条目（loop 跨轮复用同一首歌的缓存）；handoff 记录同 URL 去重 */
+  takeKeep(songId: number): PreloadOutcome | null {
+    const hit = this.store.get(songId) ?? null
+    if (hit?.blob && this.handoff[0] !== hit.url) {
+      this.handoff.unshift(hit.url)
+      while (this.handoff.length > 2) revokeBlobUrl(this.handoff.pop())
+    }
+    return hit
+  }
+
+  /** 清除指定歌曲以外的缓存条目（loop 切歌后释放旧 blob） */
+  evictExcept(songId: number): void {
+    for (const [id, outcome] of this.store) {
+      if (id !== songId) {
+        revokeBlobUrl(outcome.url)
+        this.store.delete(id)
+      }
+    }
+  }
+
   peek(songId: number): PreloadOutcome | null {
     return this.store.get(songId) ?? null
   }
@@ -124,6 +144,14 @@ class NextSongPreloader {
           blob: playUrl.startsWith('blob:'),
         }
         this.store.set(song.id, outcome)
+        // 卫生上限：快速跳歌时最多保留 4 条，淘汰最旧（Map 迭代序即插入序）
+        while (this.store.size > 4) {
+          const oldest = this.store.keys().next().value
+          if (oldest === undefined) break
+          const evicted = this.store.get(oldest)
+          this.store.delete(oldest)
+          revokeBlobUrl(evicted?.url)
+        }
         return outcome
       }
     }

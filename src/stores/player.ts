@@ -187,8 +187,15 @@ export const usePlayerStore = defineStore('player', {
       engine.setVolume(this.volume)
       try {
         // 命中预缓存则直接使用已缓存地址（blob: 数据级缓存或直链，第 0 步，零网络请求），失败后引擎继续常规降级链
-        const preloaded = nextSongPreloader.take(song.id) ?? undefined
-        await engine.play(song, settings.quality, preloaded)
+        // loop 模式：复用保留条目（同一首歌跨循环只 fetch 一次），并清理切歌残留；其余模式维持取用即删
+        let preloaded
+        if (this.mode === 'loop') {
+          nextSongPreloader.evictExcept(song.id)
+          preloaded = nextSongPreloader.takeKeep(song.id)
+        } else {
+          preloaded = nextSongPreloader.take(song.id)
+        }
+        await engine.play(song, settings.quality, preloaded ?? undefined)
       } catch {
         this.loading = false
       }
