@@ -172,4 +172,13 @@ describe('PlayerBar', () => {
     expect(like.exists()).toBe(true)
     expect(like.classes()).not.toContain('hidden')
   })
+
+  it('播放模式按钮在移动端可见（不再带 hidden）', () => {
+    const player = usePlayerStore()
+    player.playQueue([makeSong(1)], 0)
+    const wrapper = mountBar()
+    const modeBtn = wrapper.find('button[aria-label="播放模式"]')
+    expect(modeBtn.exists()).toBe(true)
+    expect(modeBtn.classes()).not.toContain('hidden')
+  })
 })

@@ -132,7 +132,7 @@ function setVolume(v: number) {
 
             <!-- 控制区 -->
             <div class="flex flex-none items-center justify-center gap-1 sm:gap-2">
-              <button class="btn-icon hidden sm:inline-flex" aria-label="播放模式" @click="toggleMode">
+              <button class="btn-icon" aria-label="播放模式" @click="toggleMode">
                 <AppIcon :name="MODE_ICON[player.mode]" :size="17" />
               </button>
               <button class="btn-icon" aria-label="上一曲" :disabled="!player.queue.length" @click="player.prev()">
