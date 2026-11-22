@@ -154,4 +154,22 @@ describe('PlayerBar', () => {
     await modeBtn.trigger('click')
     expect(player.mode).toBe('loop')
   })
+
+  it('移动端渲染进度行（不再隐藏）', () => {
+    const player = usePlayerStore()
+    player.playQueue([makeSong(1)], 0)
+    const wrapper = mountBar()
+    const row = wrapper.find('[data-testid="progress-row"]')
+    expect(row.exists()).toBe(true)
+    expect(row.classes()).not.toContain('hidden')
+  })
+
+  it('喜欢按钮在移动端可见（不再带 hidden）', () => {
+    const player = usePlayerStore()
+    player.playQueue([makeSong(1)], 0)
+    const wrapper = mountBar()
+    const like = wrapper.find('button[aria-label="喜欢"]')
+    expect(like.exists()).toBe(true)
+    expect(like.classes()).not.toContain('hidden')
+  })
 })

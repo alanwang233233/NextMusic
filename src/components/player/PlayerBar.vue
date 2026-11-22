@@ -81,8 +81,8 @@ function setVolume(v: number) {
     >
       <div class="mx-auto max-w-6xl px-2 sm:px-4">
         <div class="card-surface mb-2 border-zinc-700/80 bg-zinc-900/95 shadow-2xl shadow-black/50 backdrop-blur lg:mb-3">
-          <!-- 进度条（桌面） -->
-          <div class="hidden items-center gap-2 px-5 pt-2.5 lg:flex">
+          <!-- 进度条 -->
+          <div class="flex items-center gap-2 px-5 pt-2.5" data-testid="progress-row">
             <span class="w-10 text-right text-[11px] tabular-nums text-zinc-500">{{ formatDuration(player.currentTimeMs) }}</span>
             <input
               type="range"
@@ -151,7 +151,7 @@ function setVolume(v: number) {
                 <AppIcon name="skip-forward" :size="18" />
               </button>
               <button
-                class="btn-icon hidden sm:inline-flex"
+                class="btn-icon"
                 :class="auth.isLiked(player.currentSong?.id ?? -1) ? 'text-primary-500' : ''"
                 aria-label="喜欢"
                 @click="toggleLike"
