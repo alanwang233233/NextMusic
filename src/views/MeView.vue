@@ -56,6 +56,7 @@ const QUICK_LINKS = [
   { to: '/recent', label: '最近播放', icon: 'clock', requiresUser: false },
   { to: '/library', label: '收藏', icon: 'library', requiresUser: false },
   { to: '/daily', label: '每日推荐', icon: 'calendar', requiresUser: true },
+  { to: '/settings', label: '设置', icon: 'settings', requiresUser: false },
 ]
 
 function onQuickLink(link: (typeof QUICK_LINKS)[number], event: Event) {
@@ -97,7 +98,7 @@ function onQuickLink(link: (typeof QUICK_LINKS)[number], event: Event) {
       </div>
 
       <!-- 快捷入口 -->
-      <div class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
         <RouterLink
           v-for="link in QUICK_LINKS"
           :key="link.to"

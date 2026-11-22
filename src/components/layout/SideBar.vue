@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { to: '/liked', label: '喜欢的音乐', icon: 'heart' },
   { to: '/library', label: '收藏', icon: 'library' },
   { to: '/me', label: '我的音乐', icon: 'user' },
+  { to: '/settings', label: '设置', icon: 'settings' },
 ]
 
 const MODE_BADGE = {
