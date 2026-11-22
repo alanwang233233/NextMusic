@@ -35,7 +35,7 @@ export async function downloadSong(song: Song, quality: QualityLevel): Promise<D
     url = null
   }
   if (!url) {
-    return { ok: false, mode: 'external', reason: '未获取到下载链接，可能需要登录' }
+    return { ok: false, mode: 'external', reason: '未获取到下载链接，可能需要登录或该音质超出账号权限' }
   }
   // 防御性校验：仅接受 http(s) 直链
   const scheme = new URL(url, 'https://example.invalid').protocol

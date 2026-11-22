@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useAuthStore, VIRTUAL_BLOCK_MESSAGE } from '@/stores/auth'
+import { GUEST_BLOCK_MESSAGE, useAuthStore, VIRTUAL_BLOCK_MESSAGE } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 import { fetchUserPlaylists, fetchUserDetail } from '@/api/user'
 import { normPlaylist } from '@/api/normalize'
@@ -62,7 +62,9 @@ const QUICK_LINKS = [
 function onQuickLink(link: (typeof QUICK_LINKS)[number], event: Event) {
   if (link.requiresUser && !auth.canWrite) {
     event.preventDefault()
-    toast.error(auth.mode === 'virtual' ? VIRTUAL_BLOCK_MESSAGE : '游客模式不支持该操作，请先登录')
+    const message =
+      auth.mode === 'virtual' ? VIRTUAL_BLOCK_MESSAGE : auth.mode === 'guest' ? GUEST_BLOCK_MESSAGE : '该功能需要登录后使用'
+    toast.error(message)
   }
 }
 </script>
@@ -77,43 +79,46 @@ function onQuickLink(link: (typeof QUICK_LINKS)[number], event: Event) {
       </RouterLink>
     </EmptyState>
 
-    <template v-else>
-      <!-- 个人信息卡 -->
-      <div class="flex flex-col items-center gap-4 rounded-2xl border border-zinc-800/70 bg-gradient-to-br from-zinc-900 to-zinc-950 p-6 sm:flex-row sm:p-8">
-        <LazyImage :src="profile.avatarUrl" :size="200" rounded="rounded-full" class="h-24 w-24 shadow-xl shadow-black/50" />
-        <div class="min-w-0 text-center sm:text-left">
-          <h1 class="text-xl font-bold text-white sm:text-2xl">{{ profile.nickname }}</h1>
-          <p class="mt-1 text-xs text-zinc-500">{{ MODE_BADGE[auth.mode] }} · ID: {{ profile.userId }}</p>
-          <div class="mt-2.5 flex flex-wrap justify-center gap-3 text-xs text-zinc-500 sm:justify-start">
-            <span v-if="profile.level != null">等级 Lv.{{ profile.level }}</span>
-            <span v-if="profile.listenSongs != null">累计听歌 {{ formatCount(profile.listenSongs) }} 首</span>
-            <span v-if="profile.follows != null">关注 {{ formatCount(profile.follows) }}</span>
-            <span v-if="profile.followeds != null">粉丝 {{ formatCount(profile.followeds) }}</span>
-          </div>
-          <p v-if="auth.mode === 'virtual'" class="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-primary-950/60 px-3 py-1 text-[11px] text-primary-300">
-            <AppIcon name="x" :size="11" />
-            虚拟登录仅可浏览公开信息，写入操作不可用
-          </p>
+    <!-- 个人信息卡 -->
+    <div
+      v-else
+      class="flex flex-col items-center gap-4 rounded-2xl border border-zinc-800/70 bg-gradient-to-br from-zinc-900 to-zinc-950 p-6 sm:flex-row sm:p-8"
+    >
+      <LazyImage :src="profile.avatarUrl" :size="200" rounded="rounded-full" class="h-24 w-24 shadow-xl shadow-black/50" />
+      <div class="min-w-0 text-center sm:text-left">
+        <h1 class="text-xl font-bold text-white sm:text-2xl">{{ profile.nickname }}</h1>
+        <p class="mt-1 text-xs text-zinc-500">{{ MODE_BADGE[auth.mode] }} · ID: {{ profile.userId }}</p>
+        <div class="mt-2.5 flex flex-wrap justify-center gap-3 text-xs text-zinc-500 sm:justify-start">
+          <span v-if="profile.level != null">等级 Lv.{{ profile.level }}</span>
+          <span v-if="profile.listenSongs != null">累计听歌 {{ formatCount(profile.listenSongs) }} 首</span>
+          <span v-if="profile.follows != null">关注 {{ formatCount(profile.follows) }}</span>
+          <span v-if="profile.followeds != null">粉丝 {{ formatCount(profile.followeds) }}</span>
         </div>
+        <p v-if="auth.mode === 'virtual'" class="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-primary-950/60 px-3 py-1 text-[11px] text-primary-300">
+          <AppIcon name="x" :size="11" />
+          虚拟登录仅可浏览公开信息，写入操作不可用
+        </p>
       </div>
+    </div>
 
-      <!-- 快捷入口 -->
-      <div class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <RouterLink
-          v-for="link in QUICK_LINKS"
-          :key="link.to"
-          :to="link.to"
-          class="card-surface flex items-center gap-3 p-4 transition hover:border-primary-700"
-          @click="onQuickLink(link, $event)"
-        >
-          <span class="flex h-9 w-9 items-center justify-center rounded-full bg-primary-950/70 text-primary-400">
-            <AppIcon :name="link.icon" :size="17" />
-          </span>
-          <span class="text-xs text-zinc-300">{{ link.label }}</span>
-        </RouterLink>
-      </div>
+    <!-- 快捷入口（所有模式可见：未登录/游客在移动端经此进入设置） -->
+    <div class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <RouterLink
+        v-for="link in QUICK_LINKS"
+        :key="link.to"
+        :to="link.to"
+        class="card-surface flex items-center gap-3 p-4 transition hover:border-primary-700"
+        @click="onQuickLink(link, $event)"
+      >
+        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-primary-950/70 text-primary-400">
+          <AppIcon :name="link.icon" :size="17" />
+        </span>
+        <span class="text-xs text-zinc-300">{{ link.label }}</span>
+      </RouterLink>
+    </div>
 
-      <!-- 我的歌单 -->
+    <!-- 我的歌单 -->
+    <template v-if="profile">
       <section v-if="created.length" class="mt-8">
         <SectionHeader title="创建的歌单" :subtitle="`共 ${created.length} 个`" />
         <div class="grid grid-cols-3 gap-x-4 gap-y-5 sm:grid-cols-4 md:grid-cols-5">

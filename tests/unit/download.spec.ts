@@ -105,4 +105,10 @@ describe('downloadSong', () => {
     await downloadSong(song, 'lossless')
     expect(fetchDownloadUrl).toHaveBeenCalledWith(1, 'lossless')
   })
+
+  it('失败文案同时提示登录与音质权限', async () => {
+    vi.mocked(fetchDownloadUrl).mockResolvedValue({ url: null })
+    const res = await downloadSong(song, 'lossless')
+    expect(res.reason).toBe('未获取到下载链接，可能需要登录或该音质超出账号权限')
+  })
 })
