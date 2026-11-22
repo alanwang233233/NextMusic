@@ -48,7 +48,8 @@ test.describe('游客登录完整链路', () => {
     await expect(page.getByText('E2E 歌词行 1', { exact: true })).toBeVisible()
 
     // seek 到中段：高亮行跳到滚动后才能可见的中间行（约第 10 行）
-    const slider = page.locator('input[aria-label="播放进度"]')
+    // 播放条与全屏页现在各有一个「播放进度」滑杆，定位必须收窄到全屏容器
+    const slider = page.getByTestId('now-playing').locator('input[aria-label="播放进度"]')
     await slider.evaluate((el) => {
       const input = el as HTMLInputElement
       input.value = '500'
