@@ -1,10 +1,23 @@
 /// <reference types="vitest/config" />
+import { execSync } from 'node:child_process'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
+/** 构建期取当前提交短哈希，git 不可用（如浅克隆/无 git 环境）时回退 unknown */
+function gitShortHash(): string {
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+  } catch {
+    return 'unknown'
+  }
+}
+
 export default defineConfig({
   plugins: [vue()],
+  define: {
+    __APP_COMMIT__: JSON.stringify(gitShortHash()),
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

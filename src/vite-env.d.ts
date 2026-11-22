@@ -16,3 +16,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+/** 构建期注入的当前提交短哈希（vite define；git 不可用时为 unknown） */
+declare const __APP_COMMIT__: string

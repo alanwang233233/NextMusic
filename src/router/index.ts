@@ -17,6 +17,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/liked', name: 'liked', component: () => import('@/views/LikedView.vue'), meta: { title: '喜欢的音乐' } },
   { path: '/recent', name: 'recent', component: () => import('@/views/RecentView.vue'), meta: { title: '最近播放' } },
   { path: '/library', name: 'library', component: () => import('@/views/LibraryView.vue'), meta: { title: '收藏' } },
+  { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue'), meta: { title: '设置' } },
   { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/views/NotFoundView.vue'), meta: { title: '页面不存在' } },
 ]
 
