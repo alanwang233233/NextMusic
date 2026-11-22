@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useSettingsStore } from '@/stores/settings'
+import { nextSongPreloader } from '@/player/precache'
 
 const STORAGE_KEY = 'nextmusic.settings'
 
@@ -29,6 +30,14 @@ describe('settings store', () => {
     store.setQuality('standard')
     expect(store.quality).toBe('standard')
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).quality).toBe('standard')
+  })
+
+  it('setQuality 清空预缓存：避免旧音质 blob 被复用（loop 跨轮复用与下一曲预载均受影响）', () => {
+    const spy = vi.spyOn(nextSongPreloader, 'clear')
+    const store = useSettingsStore()
+    store.setQuality('standard')
+    expect(spy).toHaveBeenCalledTimes(1)
+    spy.mockRestore()
   })
 
   it('旧数据缺 downloadQuality 字段时回退 exhigh 且不覆盖已有字段', () => {

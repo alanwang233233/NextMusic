@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { nextSongPreloader } from '@/player/precache'
 import type { QualityLevel } from '@/types/models'
 
 const STORAGE_KEY = 'nextmusic.settings'
@@ -31,6 +32,8 @@ export const useSettingsStore = defineStore('settings', {
   actions: {
     setQuality(quality: QualityLevel) {
       this.quality = quality
+      // 已预缓存的音频按旧音质解析（loop 当前曲 blob 与下一曲 blob 均受影响），切换后全部作废
+      nextSongPreloader.clear()
       this.persist()
     },
     setDownloadQuality(quality: QualityLevel) {
