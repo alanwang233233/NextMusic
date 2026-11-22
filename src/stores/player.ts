@@ -8,6 +8,16 @@ import { likeSong } from '@/api/user'
 import { scrobble } from '@/api/song'
 import type { PlayMode, Song } from '@/types/models'
 
+/** Fisher-Yates 洗牌：返回新数组，不修改入参 */
+export function shuffledTail(songs: Song[]): Song[] {
+  const out = [...songs]
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[out[i], out[j]] = [out[j]!, out[i]!]
+  }
+  return out
+}
+
 /**
  * 引擎回调只在首次创建引擎时生效。回调内部每次都通过 usePlayerStore()
  * 惰性获取当前 store（Pinia 单例），避免闭包捕获失效的问题。
@@ -170,9 +180,8 @@ export const usePlayerStore = defineStore('player', {
           this.playing = false
           return
         }
-      } else if (this.mode === 'shuffle') {
-        target = this.pickShuffle(auto)
       } else {
+        // order 与 shuffle 共用：洗牌队列建立后上一首/下一首严格跟随队列
         target = this.index + 1
         if (target >= this.queue.length) {
           if (auto) target = 0
@@ -191,16 +200,6 @@ export const usePlayerStore = defineStore('player', {
       void this.playAt(target)
     },
 
-    pickShuffle(auto: boolean): number {
-      if (this.queue.length === 1) return this.index
-      let target = this.index
-      while (target === this.index) {
-        target = Math.floor(Math.random() * this.queue.length)
-      }
-      void auto
-      return target
-    },
-
     seekTo(ratio: number) {
       getEngine(engineCallbacksForStore()).seek(ratio * (this.durationMs || 0))
     },
@@ -213,6 +212,14 @@ export const usePlayerStore = defineStore('player', {
 
     setMode(mode: PlayMode) {
       this.mode = mode
+      // 切到随机：当前曲固定队首，其余洗牌，不打断播放；FM 队列与空队列不洗
+      if (mode !== 'shuffle' || this.fmMode || !this.hasCurrent) return
+      const current = this.currentSong!
+      this.queue = [current, ...shuffledTail(this.queue.filter((_, i) => i !== this.index))]
+      this.index = 0
+      // 旧"下一曲"预测作废：徽标与触发标记重置（若旧预载歌恰是新下一曲，preloadNext 的 peek 会零成本重新标记）
+      this.preloadedNextFor = 0
+      this._preloadTriggeredFor = 0
     },
 
     removeFromQueue(songIndex: number) {
@@ -260,15 +267,13 @@ export const usePlayerStore = defineStore('player', {
       }
     },
 
-    /** 按播放模式预测下一曲（loop 重复当前曲无需预载；shuffle 无法预测） */
+    /** 按播放模式预测下一曲（loop 预载当前曲自己；洗牌队列建立后 shuffle 与 order 同样可预测） */
     peekNextSong(): Song | null {
       if (!this.queue.length) return null
       if (this.fmMode) return this.queue[this.index + 1] ?? null
-      if (this.mode === 'order') {
-        const nextIndex = this.index + 1 < this.queue.length ? this.index + 1 : 0
-        return this.queue[nextIndex] ?? null
-      }
-      return null
+      if (this.mode === 'loop') return this.currentSong
+      const nextIndex = this.index + 1 < this.queue.length ? this.index + 1 : 0
+      return this.queue[nextIndex] ?? null
     },
 
     /** 喜欢 / 取消喜欢当前歌曲（写守卫） */

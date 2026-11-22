@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { usePlayerStore, buildEngineCallbacks } from '@/stores/player'
+import { usePlayerStore, buildEngineCallbacks, shuffledTail } from '@/stores/player'
 import { useToastStore } from '@/stores/toast'
 import { useAuthStore } from '@/stores/auth'
 import type { Song } from '@/types/models'
@@ -118,22 +118,80 @@ describe('player store', () => {
     expect(scrobble).toHaveBeenCalledWith(1, 10, 50)
   })
 
-  it('shuffle 模式下一首不等于当前', () => {
+  it('shuffle 模式：切换时当前曲固定队首，其余洗牌，不打断播放', () => {
     const player = usePlayerStore()
-    player.playQueue(
-      [makeSong(1), makeSong(2), makeSong(3), makeSong(4), makeSong(5)],
-      2,
-    )
+    player.playQueue([makeSong(1), makeSong(2), makeSong(3), makeSong(4), makeSong(5)], 2)
+    player.playing = true
+    const playCallsBefore = fakeEngine.play.mock.calls.length
+    player.preloadedNextFor = 5 // 模拟旧"下一曲已预载"标记
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.5)
     player.setMode('shuffle')
-    const seen = new Set<number>()
-    for (let i = 0; i < 20; i++) {
-      const before = player.index
-      player.next()
-      seen.add(player.index)
-      // 随机模式：下一曲永远不是“当前这一曲”
-      expect(player.index).not.toBe(before)
-    }
-    expect(seen.size).toBeGreaterThan(1)
+    randomSpy.mockRestore()
+    // 当前曲固定队首，队列是原集合的排列
+    expect(player.queue[0]?.id).toBe(3)
+    expect(player.queue.map((s) => s.id).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5])
+    expect(player.index).toBe(0)
+    // 旧"下一曲"预测作废，徽标不撒谎
+    expect(player.preloadedNextFor).toBe(0)
+    // 不打断播放：不重新 play，playing 保持
+    expect(fakeEngine.play.mock.calls.length).toBe(playCallsBefore)
+    expect(player.playing).toBe(true)
+    // 随机模式下一首/上一首严格跟随洗牌后的队列
+    player.next()
+    expect(player.currentSong?.id).toBe(player.queue[1]?.id)
+    player.prev()
+    expect(player.currentSong?.id).toBe(3)
+  })
+
+  it('shuffle 模式：队列只有一首时平凡洗牌，播放不打断', () => {
+    const player = usePlayerStore()
+    player.playQueue([makeSong(1)], 0)
+    player.playing = true
+    player.setMode('shuffle')
+    expect(player.queue.map((s) => s.id)).toEqual([1])
+    expect(player.index).toBe(0)
+    expect(player.playing).toBe(true)
+  })
+
+  it('shuffle 模式：队列为空时切换仅记录模式', () => {
+    const player = usePlayerStore()
+    player.setMode('shuffle')
+    expect(player.mode).toBe('shuffle')
+    expect(player.queue).toHaveLength(0)
+  })
+
+  it('shuffle 切回 order/loop：队列保持洗牌序不动', () => {
+    const player = usePlayerStore()
+    player.playQueue([makeSong(1), makeSong(2), makeSong(3), makeSong(4), makeSong(5)], 2)
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    player.setMode('shuffle')
+    randomSpy.mockRestore()
+    const shuffled = player.queue.map((s) => s.id)
+    player.setMode('order')
+    expect(player.queue.map((s) => s.id)).toEqual(shuffled)
+    player.setMode('loop')
+    expect(player.queue.map((s) => s.id)).toEqual(shuffled)
+  })
+
+  it('shuffle 模式：FM 播放中切换不洗 FM 队列', () => {
+    const player = usePlayerStore()
+    player.playQueue([makeSong(1), makeSong(2), makeSong(3)], 1)
+    player.fmMode = true
+    player.setMode('shuffle')
+    expect(player.queue.map((s) => s.id)).toEqual([1, 2, 3])
+    expect(player.index).toBe(1)
+  })
+
+  it('shuffledTail：Fisher-Yates 返回新数组且不修改入参', () => {
+    const input = [makeSong(1), makeSong(2), makeSong(3)]
+    const spy = vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0.9) // i=2 → j=2，无交换
+      .mockReturnValueOnce(0.1) // i=1 → j=0，交换 a[1]/a[0]
+    const out = shuffledTail(input)
+    spy.mockRestore()
+    expect(input.map((s) => s.id)).toEqual([1, 2, 3])
+    expect(out.map((s) => s.id)).toEqual([2, 1, 3])
+    expect(out).not.toBe(input)
   })
 
   it('prev 从第一首回绕到最后一首', () => {
@@ -264,18 +322,19 @@ describe('player store', () => {
     await vi.waitFor(() => player.preloadedNextFor === player.currentSong?.id)
   })
 
-  it('peekNextSong：order 模式回绕，loop/shuffle 返回 null，fm 取下一首', () => {
+  it('peekNextSong：order/shuffle 回绕预测下一首，loop 返回当前曲，fm 取下一首', () => {
     const player = usePlayerStore()
     player.playQueue([makeSong(1), makeSong(2), makeSong(3)], 2)
-    expect(player.peekNextSong()?.id).toBe(1) // 末尾回绕到第一首
+    expect(player.peekNextSong()?.id).toBe(1) // order：末尾回绕到第一首
 
+    player.setMode('shuffle') // 3 为当前曲 → 队首，其余洗牌
+    expect(player.peekNextSong()?.id).toBe(player.queue[1]?.id)
     player.setMode('loop')
-    expect(player.peekNextSong()).toBeNull()
-    player.setMode('shuffle')
-    expect(player.peekNextSong()).toBeNull()
+    expect(player.peekNextSong()?.id).toBe(player.currentSong?.id) // loop：预载自己
 
     player.setMode('order')
     player.fmMode = true
+    player.index = player.queue.length - 1 // 洗牌后 index 已在队首，显式置队尾恢复"FM 队列耗尽"前置
     expect(player.peekNextSong()).toBeNull() // FM 队列末尾
     player.queue.push(makeSong(9))
     expect(player.peekNextSong()?.id).toBe(9)
