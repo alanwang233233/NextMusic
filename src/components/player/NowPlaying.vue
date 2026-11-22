@@ -100,6 +100,20 @@ function onLyricsScroll() {
 
 const cover = computed(() => player.currentSong?.album.picUrl)
 
+const seeking = ref(false)
+const seekValue = ref(0)
+const progressPct = computed(() => (seeking.value ? seekValue.value : Math.round(player.progress * 1000)))
+
+function onSeekStart() {
+  seeking.value = true
+  seekValue.value = Math.round(player.progress * 1000)
+}
+
+function onSeek() {
+  player.seekTo(seekValue.value / 1000)
+  seeking.value = false
+}
+
 function onClose() {
   player.showNowPlaying = false
 }
@@ -176,6 +190,23 @@ function toggleLike() {
                 <h2 class="truncate text-xl font-bold text-white">{{ player.currentSong?.name }}</h2>
                 <p class="mt-1 truncate text-sm text-zinc-400">{{ player.currentSong ? artistsText(player.currentSong) : '' }}</p>
               </div>
+              <!-- 进度 -->
+              <div class="mt-4 flex items-center gap-2">
+                <span class="w-10 text-right text-[11px] tabular-nums text-zinc-500">{{ formatDuration(player.currentTimeMs) }}</span>
+                <input
+                  type="range"
+                  class="player-range flex-1"
+                  min="0"
+                  max="1000"
+                  :value="progressPct"
+                  :style="{ '--progress': `${progressPct / 10}%` }"
+                  aria-label="播放进度"
+                  @pointerdown="onSeekStart"
+                  @input="seekValue = Number(($event.target as HTMLInputElement).value)"
+                  @change="onSeek"
+                />
+                <span class="w-10 text-[11px] tabular-nums text-zinc-500">{{ formatDuration(player.durationMs) }}</span>
+              </div>
               <!-- 控制区 -->
               <div class="mt-4 flex items-center justify-center gap-2 lg:justify-start">
                 <button
@@ -191,9 +222,6 @@ function toggleLike() {
                 </button>
                 <span class="whitespace-nowrap rounded-full border border-primary-700/70 px-2.5 py-1 text-[10px] font-medium text-primary-400">
                   {{ qualityLabel(settings.quality) }}
-                </span>
-                <span class="ml-auto text-[11px] tabular-nums text-zinc-500">
-                  {{ formatDuration(player.currentTimeMs) }} / {{ formatDuration(player.durationMs) }}
                 </span>
               </div>
             </div>
