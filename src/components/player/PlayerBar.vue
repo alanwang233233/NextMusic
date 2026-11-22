@@ -51,7 +51,7 @@ async function onDownload() {
   const song = player.currentSong
   if (!song) return
   toast.info('开始下载')
-  const result = await downloadSong(song, settings.quality)
+  const result = await downloadSong(song, settings.downloadQuality)
   if (!result.ok) toast.error(result.reason || '下载失败')
   else if (result.mode === 'external') toast.success('已在新标签页打开音频')
 }

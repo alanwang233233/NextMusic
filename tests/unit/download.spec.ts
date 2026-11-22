@@ -98,4 +98,11 @@ describe('downloadSong', () => {
     expect(res.mode).toBe('external')
     expect(open).toHaveBeenCalled()
   })
+
+  it('音质等级原样透传给 fetchDownloadUrl', async () => {
+    vi.mocked(fetchDownloadUrl).mockResolvedValue({ url: 'https://x.com/a.flac' })
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, blob: async () => new Blob(['x']) }) as Response))
+    await downloadSong(song, 'lossless')
+    expect(fetchDownloadUrl).toHaveBeenCalledWith(1, 'lossless')
+  })
 })

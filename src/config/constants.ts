@@ -17,16 +17,5 @@ export function qualityLabel(level: QualityLevel): string {
   return QUALITY_LEVELS.find((q) => q.value === level)?.label ?? level
 }
 
-/** 下载码率映射 */
-export function qualityToBr(level: QualityLevel): number {
-  switch (level) {
-    case 'standard':
-      return 128000
-    case 'higher':
-      return 192000
-    case 'exhigh':
-      return 320000
-    default:
-      return 999000
-  }
-}
+/** 项目仓库地址（关于页展示） */
+export const REPO_URL = 'https://github.com/alanwang233233/NextMusic'

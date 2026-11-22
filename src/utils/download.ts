@@ -1,5 +1,4 @@
-import type { Song } from '@/types/models'
-import { qualityToBr } from '@/config/constants'
+import type { QualityLevel, Song } from '@/types/models'
 import { fetchDownloadUrl } from '@/api/song'
 import { artistsText } from '@/api/normalize'
 
@@ -24,13 +23,13 @@ export interface DownloadResult {
 
 /**
  * 下载音乐：
- * 1. 优先 /song/download/url 获取下载直链（需登录，非会员可拿无损）
+ * 1. 优先 /song/download/url/v1 获取下载直链（需登录，按 level 请求音质，超出账号权限的档位可能拿不到链接）
  * 2. 失败时回退为打开新标签页由浏览器处理
  */
-export async function downloadSong(song: Song, quality: Parameters<typeof qualityToBr>[0]): Promise<DownloadResult> {
+export async function downloadSong(song: Song, quality: QualityLevel): Promise<DownloadResult> {
   let url: string | null | undefined
   try {
-    const dl = await fetchDownloadUrl(song.id, qualityToBr(quality))
+    const dl = await fetchDownloadUrl(song.id, quality)
     url = dl.url
   } catch {
     url = null

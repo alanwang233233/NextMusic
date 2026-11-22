@@ -1,16 +1,16 @@
 import { mainApi } from './http'
 import type { LyricPayload } from '@/types/models'
 
-/** 下载直链（/song/download/url） */
+/** 下载直链（/song/download/url/v1） */
 export interface DownloadUrlResult {
   url?: string | null
   type?: string
   encodeType?: string
 }
 
-/** 获取客户端歌曲下载 url（需登录） */
-export async function fetchDownloadUrl(id: number, br = 999000): Promise<DownloadUrlResult> {
-  const body = await mainApi<{ data: DownloadUrlResult | null }>('/song/download/url', { id, br })
+/** 获取歌曲下载直链（需登录）；v1 接口按 level 请求音质（standard…sky 全 10 档） */
+export async function fetchDownloadUrl(id: number, level: string): Promise<DownloadUrlResult> {
+  const body = await mainApi<{ data: DownloadUrlResult | null }>('/song/download/url/v1', { id, level })
   return body.data || {}
 }
 
