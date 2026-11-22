@@ -83,7 +83,7 @@ watch(playlistId, () => {
 
 function playAll() {
   if (!songs.value.length) return
-  player.playQueue(songs.value, 0)
+  player.playAll(songs.value)
 }
 
 /** 单曲点击：就位播放；空播放列表时以整个歌单建立队列（下一曲/预缓存才有真实的下一首），

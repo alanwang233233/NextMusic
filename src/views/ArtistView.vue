@@ -87,7 +87,7 @@ watch(artistId, () => {
 
 function playAll() {
   if (!topSongs.value.length) return
-  player.playQueue(topSongs.value, 0)
+  player.playAll(topSongs.value)
 }
 
 function onPlay(song: Song, index: number) {

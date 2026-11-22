@@ -39,7 +39,7 @@ function playSongs() {
     toast.error('今日推荐歌曲暂不可用')
     return
   }
-  player.playQueue(songs.value, 0)
+  player.playAll(songs.value)
 }
 </script>
 

@@ -64,7 +64,7 @@ function onPlay(song: Song, index: number) {
           <p v-if="album.description" class="mt-3 line-clamp-3 whitespace-pre-line text-xs leading-5 text-zinc-500">
             {{ album.description }}
           </p>
-          <button v-if="songs.length" class="btn-primary mt-4" @click="player.playQueue(songs, 0)">
+          <button v-if="songs.length" class="btn-primary mt-4" @click="player.playAll(songs)">
             <AppIcon name="play" :size="15" />
             播放全部
           </button>

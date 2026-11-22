@@ -108,9 +108,31 @@ export const usePlayerStore = defineStore('player', {
     },
   },
   actions: {
+    /** 播放全部手势：随机模式下整列表洗牌、随机一首起播；其余模式等价 playQueue(songs, 0) */
+    playAll(songs: Song[]) {
+      if (!songs.length) return
+      if (this.mode === 'shuffle' && !this.fmMode) {
+        this.queue = shuffledTail(songs)
+        this.fmMode = false
+        void this.playAt(0)
+        return
+      }
+      this.playQueue(songs, 0)
+    },
+
     /** 替换队列并播放指定曲目 */
     playQueue(songs: Song[], startIndex = 0) {
       if (!songs.length) return
+      // 随机模式点播：起始曲队首（点谁播谁），其余洗牌；start 越界退化为整列表洗牌
+      if (this.mode === 'shuffle' && !this.fmMode) {
+        const startSong = songs[startIndex]
+        this.queue = startSong
+          ? [startSong, ...shuffledTail(songs.filter((s) => s.id !== startSong.id))]
+          : shuffledTail(songs)
+        this.fmMode = false
+        void this.playAt(0)
+        return
+      }
       this.queue = [...songs]
       this.fmMode = false
       void this.playAt(startIndex)
@@ -130,9 +152,16 @@ export const usePlayerStore = defineStore('player', {
       if (!this.queue.length && context.length) {
         const contextIndex = context.findIndex((s) => s.id === song.id)
         if (contextIndex >= 0) {
-          this.queue = [...context]
-          this.fmMode = false
-          void this.playAt(contextIndex)
+          // 随机模式：点击曲队首（点谁播谁），上下文其余洗牌；其余模式按上下文原序就位播放
+          if (this.mode === 'shuffle' && !this.fmMode) {
+            this.queue = [song, ...shuffledTail(context.filter((s) => s.id !== song.id))]
+            this.fmMode = false
+            void this.playAt(0)
+          } else {
+            this.queue = [...context]
+            this.fmMode = false
+            void this.playAt(contextIndex)
+          }
           return
         }
       }

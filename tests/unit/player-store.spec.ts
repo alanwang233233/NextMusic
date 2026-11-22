@@ -382,4 +382,53 @@ describe('player store', () => {
     expect(fakeEngine.play).toHaveBeenLastCalledWith(expect.objectContaining({ id: 2 }), expect.any(String), preloaded)
     preloadTake.mockReturnValue(null)
   })
+
+  it('playAll：order 模式等价 playQueue 从第 0 首播', () => {
+    const player = usePlayerStore()
+    player.playAll([makeSong(1), makeSong(2), makeSong(3)])
+    expect(player.queue.map((s) => s.id)).toEqual([1, 2, 3])
+    expect(player.index).toBe(0)
+  })
+
+  it('playAll：shuffle 模式整列表洗牌，从随机一首起播', () => {
+    const player = usePlayerStore()
+    player.setMode('shuffle')
+    player.playAll([makeSong(1), makeSong(2), makeSong(3), makeSong(4)])
+    expect(player.queue).toHaveLength(4)
+    expect(player.queue.map((s) => s.id).sort((a, b) => a - b)).toEqual([1, 2, 3, 4])
+    expect(player.index).toBe(0)
+    expect(player.currentSong?.id).toBe(player.queue[0]?.id)
+  })
+
+  it('playAll：空列表不建立队列', () => {
+    const player = usePlayerStore()
+    player.playAll([])
+    expect(player.queue).toHaveLength(0)
+  })
+
+  it('playQueue：shuffle 模式下起始曲队首，其余洗牌（点击曲先播）', () => {
+    const player = usePlayerStore()
+    player.setMode('shuffle')
+    player.playQueue([makeSong(1), makeSong(2), makeSong(3), makeSong(4)], 2)
+    expect(player.queue[0]?.id).toBe(3)
+    expect(player.queue.map((s) => s.id).sort((a, b) => a - b)).toEqual([1, 2, 3, 4])
+    expect(player.currentSong?.id).toBe(3)
+  })
+
+  it('playQueue：shuffle 模式 start 越界退化为整列表洗牌', () => {
+    const player = usePlayerStore()
+    player.setMode('shuffle')
+    player.playQueue([makeSong(1), makeSong(2)], 99)
+    expect(player.queue.map((s) => s.id).sort((a, b) => a - b)).toEqual([1, 2])
+    expect(player.index).toBe(0)
+  })
+
+  it('playSongNow：shuffle 模式空队列建队列时点击曲队首，其余洗牌', () => {
+    const player = usePlayerStore()
+    player.setMode('shuffle')
+    player.playSongNow(makeSong(102), [makeSong(101), makeSong(102), makeSong(103)])
+    expect(player.queue[0]?.id).toBe(102)
+    expect(player.queue.map((s) => s.id).sort((a, b) => a - b)).toEqual([101, 102, 103])
+    expect(player.currentSong?.id).toBe(102)
+  })
 })

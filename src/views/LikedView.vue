@@ -58,7 +58,7 @@ function onPlay(song: Song, index: number) {
         <h1 class="text-xl font-bold text-white">喜欢的音乐</h1>
         <p v-if="auth.mode === 'user' && auth.likedIds.length" class="mt-1 text-xs text-zinc-500">共 {{ auth.likedIds.length }} 首</p>
       </div>
-      <button v-if="songs.length" class="btn-primary" @click="player.playQueue(songs, 0)">
+      <button v-if="songs.length" class="btn-primary" @click="player.playAll(songs)">
         <AppIcon name="play" :size="15" />
         播放全部
       </button>
