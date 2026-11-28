@@ -7,6 +7,8 @@
  * （POST 请求则放在 JSON body 中，避免凭证/密码出现在 URL 日志里）。
  */
 
+import { getDesktopBridge } from '@/utils/desktop'
+
 export class ApiError extends Error {
   code: number
   constructor(code: number, message: string) {
@@ -25,16 +27,38 @@ export class WriteBlockedError extends Error {
 }
 
 /**
- * 主 API 地址从环境变量读取（构建时注入），源码与仓库中不保留具体地址。
- * 本地开发复制 .env.example 为 .env.local 并填入 VITE_MAIN_API。
+ * 主 API 地址三级解析：
+ * 1. 桥接注入（Electron preload 提供的本地 api-enhanced 服务地址，模块加载期求值）
+ * 2. 设置覆盖（注册式 provider 每请求惰性求值，见 bindMainApiOverride）
+ * 3. 构建期环境变量 VITE_MAIN_API
+ * 纯 Web 环境下 1/2 不存在，行为与仅用 env 时完全一致。
  */
-export const MAIN_API_BASE: string = import.meta.env.VITE_MAIN_API || ''
+export let MAIN_API_BASE: string = getDesktopBridge()?.mainApiBase || import.meta.env.VITE_MAIN_API || ''
 export const OUTER_API_BASE = import.meta.env.VITE_OUTER_API || 'https://nextmusic.toubiec.cn'
 
-/** 未配置主 API 地址时给出明确的运行时错误 */
+type OverrideProvider = () => string | undefined | null
+
+let overrideProvider: OverrideProvider | null = null
+
+/** 由 settings store 注册主 API 覆盖读取函数（仿 bindCookieProvider） */
+export function bindMainApiOverride(fn: OverrideProvider | null): void {
+  overrideProvider = fn
+}
+
+/** 去首尾空白与结尾斜杠，保证 `${base}/path` 拼接安全 */
+function normalizeBase(url: string): string {
+  return url.trim().replace(/\/+$/, '')
+}
+
+/** 未配置主 API 地址时给出明确的运行时错误（桌面环境文案不同） */
 export function requireMainApiBase(): string {
+  const override = overrideProvider?.()
+  if (override && override.trim()) return normalizeBase(override)
   if (!MAIN_API_BASE) {
-    throw new ApiError(-1, '主 API 地址未配置：请复制 .env.example 为 .env.local 并填入 VITE_MAIN_API')
+    const message = getDesktopBridge()
+      ? '本地 API 服务未就绪，请重启应用'
+      : '主 API 地址未配置：请复制 .env.example 为 .env.local 并填入 VITE_MAIN_API'
+    throw new ApiError(-1, message)
   }
   return MAIN_API_BASE
 }
