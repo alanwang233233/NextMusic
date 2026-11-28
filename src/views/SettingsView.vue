@@ -1,13 +1,52 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
+import { useToastStore } from '@/stores/toast'
+import { getDesktopBridge } from '@/utils/desktop'
+import { useAudioOutput } from '@/composables/useAudioOutput'
 import { QUALITY_LEVELS, REPO_URL } from '@/config/constants'
 import SectionHeader from '@/components/ui/SectionHeader.vue'
 import AppIcon from '@/components/ui/AppIcon.vue'
 
 const settings = useSettingsStore()
+const toast = useToastStore()
 const commit = __APP_COMMIT__
 const repoHost = computed(() => REPO_URL.replace(/^https?:\/\//, ''))
+
+/** 桌面板块（仅 Electron preload 注入桥接时渲染；纯 Web 全部跳过） */
+const isDesktop = getDesktopBridge() !== null
+let audioState: ReturnType<typeof useAudioOutput> | null = null
+if (isDesktop) {
+  audioState = useAudioOutput()
+}
+const audioDevices = computed(() => audioState?.devices.value ?? [])
+const currentDeviceId = computed(() => audioState?.currentId.value ?? 'default')
+
+function chooseDevice(deviceId: string): void {
+  void audioState?.select(deviceId)
+}
+
+const mainApiDraft = ref('')
+onMounted(() => {
+  mainApiDraft.value = settings.mainApiBaseOverride
+  if (audioState) void audioState.refresh()
+})
+
+function saveMainApi(): void {
+  settings.setMainApiBaseOverride(mainApiDraft.value)
+  mainApiDraft.value = settings.mainApiBaseOverride
+  toast.info('已保存，立即生效')
+}
+
+function resetMainApi(): void {
+  settings.setMainApiBaseOverride('')
+  mainApiDraft.value = ''
+  toast.info('已恢复内置主 API')
+}
+
+function toggleUnblock(): void {
+  settings.setGeneralUnblock(!settings.generalUnblock)
+}
 </script>
 
 <template>
@@ -49,6 +88,78 @@ const repoHost = computed(() => REPO_URL.replace(/^https?:\/\//, ''))
           <span class="flex items-center gap-2">
             <span v-if="q.vip" class="text-[10px] text-zinc-500">VIP</span>
             <AppIcon v-if="settings.downloadQuality === q.value" name="check" :size="15" />
+          </span>
+        </button>
+      </div>
+    </section>
+
+    <!-- 桌面版（仅 Electron 环境渲染） -->
+    <section v-if="isDesktop" class="mt-8" data-testid="desktop-section">
+      <SectionHeader title="桌面版" subtitle="NextMusic 桌面客户端专属设置" />
+      <div class="card-surface divide-y divide-zinc-800/70 overflow-hidden">
+        <!-- 播放设备 -->
+        <div class="px-4 py-3">
+          <div class="mb-2 flex items-center gap-1.5 text-sm text-zinc-400">
+            <AppIcon name="speaker" :size="15" />
+            <span>播放设备</span>
+          </div>
+          <button
+            v-for="d in audioDevices"
+            :key="d.deviceId"
+            class="flex w-full items-center justify-between rounded-lg px-2 py-2 text-sm transition hover:bg-zinc-800/60"
+            :data-testid="`audio-device-${d.deviceId}`"
+            @click="chooseDevice(d.deviceId)"
+          >
+            <span :class="currentDeviceId === d.deviceId ? 'text-primary-400' : 'text-zinc-300'">{{ d.label }}</span>
+            <AppIcon v-if="currentDeviceId === d.deviceId" name="check" :size="15" />
+          </button>
+          <p v-if="audioDevices.length === 0" class="px-2 py-1 text-xs text-zinc-500">未枚举到音频输出设备</p>
+        </div>
+        <!-- 主 API -->
+        <div class="px-4 py-3">
+          <div class="mb-2 text-sm text-zinc-400">主 API</div>
+          <div class="flex gap-2">
+            <input
+              v-model="mainApiDraft"
+              data-testid="main-api-input"
+              placeholder="http://your-api.example.com"
+              class="h-9 min-w-0 flex-1 rounded-lg bg-zinc-800/70 px-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-primary-600"
+            />
+            <button
+              data-testid="main-api-save"
+              class="shrink-0 rounded-lg bg-primary-600 px-3 text-sm text-white transition hover:bg-primary-500"
+              @click="saveMainApi"
+            >
+              保存
+            </button>
+            <button
+              data-testid="main-api-reset"
+              class="shrink-0 rounded-lg border border-zinc-700 px-3 text-sm text-zinc-300 transition hover:bg-zinc-800/60"
+              @click="resetMainApi"
+            >
+              恢复内置
+            </button>
+          </div>
+          <p class="mt-1.5 text-xs text-zinc-500">留空使用应用内置的本地 API 服务；自定义地址保存后立即生效</p>
+        </div>
+        <!-- 解灰 -->
+        <button
+          class="flex w-full items-center justify-between px-4 py-3 text-sm transition hover:bg-zinc-800/60"
+          data-testid="unblock-toggle"
+          @click="toggleUnblock"
+        >
+          <span class="text-left">
+            <span class="block text-zinc-300">解灰</span>
+            <span class="mt-0.5 block text-xs text-zinc-500">对 VIP/灰色歌曲尝试自动解锁</span>
+          </span>
+          <span
+            class="relative h-5 w-9 shrink-0 rounded-full transition"
+            :class="settings.generalUnblock ? 'bg-primary-600' : 'bg-zinc-700'"
+          >
+            <span
+              class="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all"
+              :class="settings.generalUnblock ? 'left-[18px]' : 'left-0.5'"
+            ></span>
           </span>
         </button>
       </div>
