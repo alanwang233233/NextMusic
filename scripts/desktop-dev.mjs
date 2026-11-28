@@ -8,11 +8,11 @@ import process from 'node:process'
 const VITE_URL = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173'
 const vitePort = new URL(VITE_URL).port || '5173'
 const children = []
-// Windows 上 npx 是 .cmd shim（spawn 裸名 ENOENT / Node ≥20.12 EINVAL），显式解析
-const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx'
+// Windows 上 npx 是 .cmd shim（Node ≥20.12 无 shell spawn 抛 EINVAL），shell:true 走 PATHEXT 解析裸名
+const npxCmd = 'npx'
 
 function run(command, args, env = {}) {
-  const child = spawn(command, args, { stdio: 'inherit', env: { ...process.env, ...env } })
+  const child = spawn(command, args, { stdio: 'inherit', env: { ...process.env, ...env }, shell: true })
   children.push(child)
   return child
 }

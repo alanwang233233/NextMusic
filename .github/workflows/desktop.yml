@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     strategy:
+      # 单平台失败不连带取消其余平台（各平台产物独立；release 由 needs 门控）
+      fail-fast: false
       matrix:
         include:
           - os: macos-latest
