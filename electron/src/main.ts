@@ -118,7 +118,8 @@ function createWindow(mainApiBase: string): void {
   if (devServerUrl) {
     void win.loadURL(devServerUrl)
   } else {
-    void win.loadURL('app://nextmusic/index.html')
+    // 必须加载根路径：历史模式路由读 pathname，加载 /index.html 会命中 404 兜底路由（页面不存在）
+    void win.loadURL('app://nextmusic/')
   }
   win.once('ready-to-show', () => win.show())
   // mac 关窗隐藏到后台（音乐继续播放），菜单栏/Dock 重新激活时显示

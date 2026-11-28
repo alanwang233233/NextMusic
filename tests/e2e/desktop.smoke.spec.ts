@@ -25,21 +25,25 @@ test.describe('桌面冒烟', () => {
       ? await _electron.launch({ executablePath, timeout: 90_000 })
       : await _electron.launch({ args: ['electron/dist/main.cjs'], timeout: 90_000 })
     try {
-      const window = await app.firstWindow()
+      const page = await app.firstWindow()
       // UI 真实加载（非 404/白屏）：SPA 挂载点必须出现——同时覆盖 dev 直启与 asar 两种模式
-      await window.waitForSelector('#app', { state: 'attached', timeout: 30_000 })
-      const bridge = await window.evaluate(() =>
+      await page.waitForSelector('#app', { state: 'attached', timeout: 30_000 })
+      // 首启必须落在根路由：历史模式下 pathname 若为 /index.html 会命中 404 兜底路由（页面不存在）
+      await page.waitForSelector('#app > *', { state: 'attached', timeout: 30_000 })
+      expect(await page.evaluate(() => window.location.pathname)).toBe('/')
+      expect(await page.textContent('body')).not.toContain('页面不存在')
+      const bridge = await page.evaluate(() =>
         Promise.resolve((window as { nextmusicDesktop?: { mainApiBase?: string; setGeneralUnblock?: unknown } }).nextmusicDesktop),
       )
       expect(bridge, 'preload 应注入 nextmusicDesktop 桥接').toBeTruthy()
       expect(bridge!.mainApiBase).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
 
       // 健康检查：本地服务根路径（静态 public，不触发 NCM 外呼，离线可用）
-      const health = await window.request.get(`${bridge!.mainApiBase}/`)
+      const health = await page.request.get(`${bridge!.mainApiBase}/`)
       expect(health.status()).toBe(200)
 
       // 解灰 IPC 链路：invoke 返回 true
-      const unblockResult = await window.evaluate(async () => {
+      const unblockResult = await page.evaluate(async () => {
         const b = (window as { nextmusicDesktop?: { setGeneralUnblock?: (enabled: boolean) => Promise<boolean> } }).nextmusicDesktop
         return b?.setGeneralUnblock ? await b.setGeneralUnblock(true) : null
       })
@@ -57,12 +61,12 @@ test.describe('桌面冒烟', () => {
       ? await _electron.launch({ executablePath, timeout: 90_000 })
       : await _electron.launch({ args: ['electron/dist/main.cjs'], timeout: 90_000 })
     try {
-      const window = await app.firstWindow()
-      const mainApiBase = await window.evaluate(
+      const page = await app.firstWindow()
+      const mainApiBase = await page.evaluate(
         () => (window as { nextmusicDesktop?: { mainApiBase?: string } }).nextmusicDesktop?.mainApiBase,
       )
       expect(mainApiBase).toBeTruthy()
-      const res = await window.request.get(
+      const res = await page.request.get(
         `${mainApiBase}/song/url/v1?id=347230&level=exhigh&timestamp=${Date.now()}`,
       )
       expect(res.status()).toBe(200)
