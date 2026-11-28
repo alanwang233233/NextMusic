@@ -1,6 +1,6 @@
 # NextMusic
 
-基于网易云音乐的纯客户端 Web 音乐播放器：无自建后端，浏览器直连主NeteaseCloudMusicApi 兼容接口与 OuterAPI，登录态与播放降级全部在客户端处理。
+基于网易云音乐的纯客户端音乐播放器：**Web（SPA）与桌面版（Electron，Windows / macOS / Linux）双形态**。无自建后端——Web 版直连自部署的主 NeteaseCloudMusicApi 兼容接口与 OuterAPI，桌面版内置本地运行 api-enhanced 服务；登录态与播放降级全部在客户端处理。
 
 ![Library](Screenshot_index.png)
 
@@ -19,6 +19,11 @@
 - **下载**：优先获取下载直链（blob 下载），失败回退浏览器新标签页；不属于写操作，各登录模式均可用
 - **键盘快捷键**：空格 播放 / 暂停，← / → 切歌，Ctrl/⌘ + ↑ / ↓ 音量调节（输入框聚焦时不劫持）
 - **登录与权限**：手机号 / 邮箱 / 扫码 / 游客 / 虚拟登录；游客与虚拟模式为只读，写操作（喜欢、收藏、歌单编辑、FM 垃圾桶）统一拦截并提示
+- **桌面版（Electron）**：
+  - 内置本地运行 api-enhanced，无需自部署远程 API 实例；也可在设置中覆盖为远程地址
+  - 播放输出设备切换（扬声器 / 耳机，即时生效、设备拔出自动回退）
+  - 解灰开关（对 VIP / 灰色歌曲尝试自动解锁）
+  - 三平台安装包（macOS dmg+zip / Windows NSIS / Linux AppImage+deb）
 
 ## 技术栈
 Vue 3 + TypeScript + Vite + Pinia + Tailwind CSS；测试使用 Vitest 与 Playwright。
@@ -64,6 +69,8 @@ npm run dev
 
 ## 桌面版（Electron）
 
+从 [Releases](https://github.com/alanwang233233/NextMusic/releases) 下载对应平台安装包（由 GitHub Actions 在 `desktop-v*` 标签上自动构建发布）。安装包未签名：macOS 首次打开需右键 →「打开」（或到系统设置放行 Gatekeeper 拦截），Windows 会提示 SmartScreen（点「仍要运行」）。
+
 桌面版在应用内嵌本地运行 [api-enhanced](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced)（监听 `127.0.0.1` 随机端口），无需自部署远程实例；可在 **设置 → 桌面版** 中切换播放设备（扬声器/耳机）、覆盖主 API 为远程地址、开关解灰。纯 Web 版与部署流程完全不受影响。
 
 ```bash
@@ -106,12 +113,15 @@ src/
 ├── api/          # 唯一网络层：主 API（mainApi）与 OuterAPI（outerApi）
 ├── player/       # 播放引擎（engine.ts）与下一曲预缓存（precache.ts）
 ├── stores/       # Pinia：auth / player / settings / toast
-├── composables/  # 写操作守卫、全局键盘快捷键等
+├── composables/  # 写操作守卫、全局键盘快捷键、播放设备管理等
 ├── components/   # layout / music / player / ui 组件；图标统一走 AppIcon 内联 SVG
 ├── views/        # 路由页面（发现、搜索、FM、歌单、专辑、歌手、登录等）
 ├── config/       # 音质档位、码率映射等常量
-├── utils/        # 下载、格式化、歌词解析
+├── utils/        # 下载、格式化、歌词解析、桌面桥接检测
 └── types/        # 领域模型
+electron/src/     # 桌面版主进程（内嵌 api-enhanced）/ 预加载桥接
+scripts/          # 桌面 dev/build 编排与占位图标生成
+.github/workflows/desktop.yml  # 三平台桌面打包与 Release 发布
 ```
 
 ## 免责声明
