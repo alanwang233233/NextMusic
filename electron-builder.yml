@@ -1,0 +1,31 @@
+appId: cn.nextmusic.app
+productName: NextMusic
+directories:
+  output: desktop-release
+files:
+  - dist/**
+  - electron/dist/**
+  - package.json
+asar: true
+# 依赖打包：electron-builder 自动收集 dependencies（vue/pinia/vue-router 虽运行时不需要但体积小；
+# 关键是 @neteasecloudmusicapienhanced/api 及其传递依赖须完整进入 asar 供主进程 require）
+mac:
+  category: public.app-category.music
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  icon: assets/icon.png
+win:
+  target: nsis
+  icon: assets/icon.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+linux:
+  category: Audio
+  target:
+    - AppImage
+    - deb
+  icon: assets/icon.png
