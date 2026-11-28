@@ -31,6 +31,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck:electron
+      # ubuntu-24.04：bwrap（flatpak build 内部）与非特权 userns 受限，需放开两项内核开关
+      - if: runner.os == 'Linux'
+        run: |
+          sudo sysctl -w kernel.unprivileged_userns_clone=1
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       # flatpak/flatpak-builder：electron-builder flatpak 目标依赖（ubuntu 镜像不含 builder）
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y flatpak flatpak-builder
