@@ -23,7 +23,7 @@
   - 内置本地运行 api-enhanced，无需自部署远程 API 实例；也可在设置中覆盖为远程地址
   - 播放输出设备切换（扬声器 / 耳机，即时生效、设备拔出自动回退）
   - 解灰开关（对 VIP / 灰色歌曲尝试自动解锁）
-  - 三平台安装包（macOS dmg+zip / Windows NSIS / Linux AppImage+deb）
+  - 三平台分发：macOS dmg+zip、Windows 安装版 + 绿色版免安装、Linux AppImage / deb / rpm / pacman / flatpak / snap
 
 ## 技术栈
 Vue 3 + TypeScript + Vite + Pinia + Tailwind CSS；测试使用 Vitest 与 Playwright。
@@ -82,8 +82,8 @@ npm run desktop:build            # 透传参数，如 --dir 仅出未打包目�
 
 # 显式指定平台
 npm run desktop:build:mac        # dmg + zip（arm64/x64）
-npm run desktop:build:win        # NSIS 安装包
-npm run desktop:build:linux      # AppImage + deb
+npm run desktop:build:win        # NSIS 安装包 + portable 绿色版免安装
+npm run desktop:build:linux      # AppImage + deb + rpm + pacman + flatpak + snap
 ```
 
 - 应用图标为占位生成（`scripts/generate-icon.mjs` → `assets/icon.png`），替换 `assets/icon.png` 即可（electron-builder 自动转 icns/ico）

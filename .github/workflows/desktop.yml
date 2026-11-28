@@ -31,6 +31,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck:electron
+      # flatpak/flatpak-builder：electron-builder flatpak 目标依赖（ubuntu 镜像不含 builder）
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y flatpak flatpak-builder
       # 桌面构建内含 Web 构建（强制置空 VITE_MAIN_API，防私有地址入包）
       - run: npm run ${{ matrix.script }}
       - uses: actions/upload-artifact@v4
@@ -42,6 +45,10 @@ jobs:
             desktop-release/*.exe
             desktop-release/*.AppImage
             desktop-release/*.deb
+            desktop-release/*.rpm
+            desktop-release/*.pacman
+            desktop-release/*.flatpak
+            desktop-release/*.snap
           if-no-files-found: error
 
   verify:
