@@ -39,6 +39,12 @@ jobs:
       # flatpak/flatpak-builder：electron-builder flatpak 目标依赖（ubuntu 镜像不含 builder）
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y flatpak flatpak-builder
+      # flatpak-bundler 假设 flathub 源已配置（runner 上为空），否则 runtime 引用解析失败
+      # "No remote refs found"；system/user 双层配置以覆盖其安装路径
+      - if: runner.os == 'Linux'
+        run: |
+          sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
       # flatpak 子命令输出被 @malept/flatpak-bundler 吞进 debug() 日志（默认不可见），
       # 用 shim 强制透传落盘，失败时 dump 诊断
       - if: runner.os == 'Linux'
