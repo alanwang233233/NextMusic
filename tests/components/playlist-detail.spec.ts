@@ -116,7 +116,8 @@ describe('PlaylistDetailView 播放行为', () => {
     })
   }
 
-  it('按 trackIds 全量加载歌曲（不再有 1000 首截断），分块请求顺序与 trackIds 一致', async () => {
+  // 全组件测试中最重的挂载（jsdom 渲染 600 个按钮节点），桌面高负载下 5s 默认上限会误报超时
+  it('按 trackIds 全量加载歌曲（不再有 1000 首截断），分块请求顺序与 trackIds 一致', { timeout: 15_000 }, async () => {
     const { fetchSongsDetail } = await import('@/api/playlist')
     // 超过单块 500 上限的场景：600 首需要 2 块（500 + 100）
     const { fetchPlaylistDetail } = await import('@/api/playlist')
