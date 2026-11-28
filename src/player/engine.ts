@@ -233,6 +233,19 @@ export class PlayerEngine {
   setVolume(v: number): void {
     this.audio.volume = Math.min(Math.max(v, 0), 1)
   }
+
+  /**
+   * 切换音频输出设备（Chromium setSinkId，桌面版设备切换入口使用）。
+   * 'default'/空串映射为 ''（系统默认）；sink 设置持久于 audio 元素，切歌无需重设。
+   * 不支持 setSinkId 的环境（部分浏览器/jsdom）抛明确错误，由调用方提示。
+   */
+  async setOutputDevice(deviceId: string): Promise<void> {
+    const sinkId = deviceId === 'default' || deviceId === '' ? '' : deviceId
+    if (typeof this.audio.setSinkId !== 'function') {
+      throw new Error('当前环境不支持切换播放设备')
+    }
+    await this.audio.setSinkId(sinkId)
+  }
 }
 
 let engine: PlayerEngine | null = null
@@ -245,4 +258,9 @@ export function getEngine(callbacks: EngineCallbacks): PlayerEngine {
 
 export function resetEngineForTest(): void {
   engine = null
+}
+
+/** 已创建的引擎实例（不触发创建；设备切换等播放无关操作用） */
+export function getExistingEngine(): PlayerEngine | null {
+  return engine
 }
