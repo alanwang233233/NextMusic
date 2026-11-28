@@ -53,9 +53,6 @@ export interface MockState {
   songJsonCalls: number
   /** 按歌曲 id 统计的 JSON 直链解析次数 */
   songJsonCallsById: Record<number, number>
-  outerCalls: number
-  /** 按歌曲 id 统计的 OuterAPI 解析次数 */
-  outerCallsById: Record<number, number>
 }
 
 /**
@@ -69,8 +66,6 @@ export async function setupMockRoutes(page: Page): Promise<MockState> {
     song302Calls: 0,
     songJsonCalls: 0,
     songJsonCallsById: {},
-    outerCalls: 0,
-    outerCallsById: {},
   }
   const tone = fs.readFileSync(path.resolve('tests/e2e/fixtures/tone.wav'))
 
@@ -174,13 +169,6 @@ export async function setupMockRoutes(page: Page): Promise<MockState> {
     void route.fulfill({ status: 302, headers: { Location: `${pageOrigin}/e2e/tone.wav` } })
   })
   await page.route('**/e2e/tone.wav', (route) => route.fulfill({ status: 200, contentType: 'audio/wav', body: tone }))
-  await page.route('**/api/getSongUrl', (route) => {
-    state.outerCalls++
-    const body = JSON.parse(route.request().postData() || '{}')
-    const id = Number(body.id) || 0
-    state.outerCallsById[id] = (state.outerCallsById[id] || 0) + 1
-    return route.fulfill(json({ code: 200, data: { id: body.id, url: '/e2e/tone.wav', br: 128000, level: 'standard', size: tone.length } }))
-  })
   await page.route('**/scrobble*', (route) => route.fulfill(json({ code: 200 })))
   await page.route('**/check/music*', (route) => route.fulfill(json({ code: 200, success: true })))
 

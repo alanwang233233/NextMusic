@@ -34,7 +34,6 @@ export class WriteBlockedError extends Error {
  * 纯 Web 环境下 1/2 不存在，行为与仅用 env 时完全一致。
  */
 export let MAIN_API_BASE: string = getDesktopBridge()?.mainApiBase || import.meta.env.VITE_MAIN_API || ''
-export const OUTER_API_BASE = import.meta.env.VITE_OUTER_API || 'https://nextmusic.toubiec.cn'
 
 type OverrideProvider = () => string | undefined | null
 
@@ -61,17 +60,6 @@ export function requireMainApiBase(): string {
     throw new ApiError(-1, message)
   }
   return MAIN_API_BASE
-}
-
-/**
- * OuterAPI 必须携带 ip 参数（缺失时报 400「当前非法提交参数」）。
- * 客户端无法可靠获知公网 IP，按接口约定在会话内生成一个随机中国 IP（可通过 env 覆盖）。
- */
-const OUTER_IP = import.meta.env.VITE_OUTER_IP || randomChinaIp()
-
-function randomChinaIp(): string {
-  const segment = () => 1 + Math.floor(Math.random() * 254)
-  return `116.25.${segment()}.${segment()}`
 }
 
 type CookieProvider = () => string | undefined
@@ -172,38 +160,6 @@ export async function mainApi<T = Record<string, unknown>>(
       throw new ApiError(-1, '请求超时，请检查网络后重试')
     }
     throw new ApiError(-1, '网络异常，请稍后重试')
-  } finally {
-    clearTimeout(timer)
-  }
-}
-
-/** OuterAPI 请求（全部为 POST JSON；必带 ip，不带 timestamp） */
-export async function outerApi<T = Record<string, unknown>>(
-  path: string,
-  body: Record<string, unknown> = {},
-): Promise<T> {
-  const payload: Record<string, unknown> = { ip: OUTER_IP, ...body }
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT)
-  try {
-    const res = await fetch(`${OUTER_API_BASE}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    })
-    const json = (await res.json()) as Record<string, unknown>
-    const code = typeof json.code === 'number' ? json.code : res.status
-    if (code !== 200) {
-      throw new ApiError(code, String(json.message || `OuterAPI 请求失败（${code}）`))
-    }
-    return json as T
-  } catch (err) {
-    if (err instanceof ApiError) throw err
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new ApiError(-1, 'OuterAPI 请求超时')
-    }
-    throw new ApiError(-1, 'OuterAPI 网络异常')
   } finally {
     clearTimeout(timer)
   }

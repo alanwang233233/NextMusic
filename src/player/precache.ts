@@ -1,4 +1,3 @@
-import { fetchOuterSongUrl } from '@/api/outer'
 import { fetchSongDirectUrl } from '@/api/song'
 import { isTooShort, main302Url } from './engine'
 import type { Song, UrlSource } from '@/types/models'
@@ -54,7 +53,7 @@ interface Candidate {
 
 /**
  * 下一曲预缓存器（数据级）：
- * 1. 按候选链解析下一曲直链：主 API JSON 直链（可 Blob 化）→ 302 端点（媒体元素流）→ OuterAPI 直链（可 Blob 化）
+ * 1. 按候选链解析下一曲直链：主 API JSON 直链（解灰开启时携带 unblock，可 Blob 化）→ 302 端点（媒体元素流）
  * 2. 可 Blob 化的候选优先 fetch 整段音频缓存为 blob: URL，失败回退为元素直连
  * 3. 用隐藏 Audio 验证时长（防试听片段），结果缓存
  * 4. 真正切歌时引擎第 0 步直接命中 blob: URL——零网络请求，即点即播
@@ -158,7 +157,7 @@ class NextSongPreloader {
     return null
   }
 
-  /** 候选直链（按优先级懒求值，避免无谓消耗 OuterAPI） */
+  /** 候选直链（按优先级懒求值） */
   private candidateThunks(song: Song, level: string): (() => Promise<Candidate | null>)[] {
     return [
       async () => {
@@ -175,15 +174,6 @@ class NextSongPreloader {
       },
       // 302 端点：带 cookie 的元素流地址，媒体元素可跟随（fetch 会被风控拒绝），作为兜底
       async () => ({ url: main302Url(song.id, level), source: 'main302', blobbable: false }),
-      async () => {
-        try {
-          const outer = await fetchOuterSongUrl(song.id, level)
-          if (outer.url) return { url: upgradeToFetchable(outer.url), source: 'outer', blobbable: true }
-        } catch {
-          /* OuterAPI 不可用 */
-        }
-        return null
-      },
     ]
   }
 

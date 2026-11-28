@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, bindCookieProvider, mainApi, outerApi, getCookie, MAIN_API_BASE } from '@/api/http'
+import { ApiError, bindCookieProvider, mainApi, getCookie, MAIN_API_BASE } from '@/api/http'
 
 const fetchMock = vi.fn()
 
@@ -88,26 +88,6 @@ describe('mainApi', () => {
     await vi.advanceTimersByTimeAsync(16_000)
     await expect(promise).rejects.toMatchObject({ code: -1 })
     vi.useRealTimers()
-  })
-})
-
-describe('outerApi', () => {
-  it('POST JSON 必带 ip 且不带 timestamp', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ code: 200, data: { url: 'https://x' } }))
-    const res = await outerApi('/api/getSongUrl', { id: '1', level: 'standard' })
-    expect(res.data).toEqual({ url: 'https://x' })
-    const [url, init] = fetchMock.mock.calls[0]
-    expect(url).toContain('nextmusic.toubiec.cn/api/getSongUrl')
-    expect(init.method).toBe('POST')
-    const body = JSON.parse(init.body)
-    expect(body).toMatchObject({ id: '1', level: 'standard' })
-    expect(body.ip).toMatch(/^\d{1,3}(\.\d{1,3}){3}$/)
-    expect(body.timestamp).toBeUndefined()
-  })
-
-  it('非 200 code 抛出 ApiError', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ code: 500, message: 'server error', data: null }))
-    await expect(outerApi('/api/getSongInfo', { id: '1' })).rejects.toMatchObject({ code: 500 })
   })
 })
 

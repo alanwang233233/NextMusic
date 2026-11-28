@@ -33,7 +33,6 @@ vi.mock('@/api/http', () => ({
     }
     return { code: 200 }
   }),
-  outerApi: vi.fn(),
   ApiError: class extends Error {
     code: number
     constructor(code: number, message: string) {
@@ -44,7 +43,6 @@ vi.mock('@/api/http', () => ({
   WriteBlockedError: class extends Error {},
   bindCookieProvider: vi.fn(),
   MAIN_API_BASE: 'https://mainapi.test',
-  OUTER_API_BASE: 'https://nextmusic.toubiec.cn',
 }))
 
 const PROFILE = { userId: 100, nickname: '测试用户', avatarUrl: 'https://p1.music.126.net/a.jpg' }

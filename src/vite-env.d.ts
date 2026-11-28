@@ -8,9 +8,6 @@ declare module '*.vue' {
 
 interface ImportMetaEnv {
   readonly VITE_MAIN_API?: string
-  readonly VITE_OUTER_API?: string
-  /** OuterAPI 必带的 ip 参数（缺省为会话内随机中国 IP） */
-  readonly VITE_OUTER_IP?: string
 }
 
 interface ImportMeta {

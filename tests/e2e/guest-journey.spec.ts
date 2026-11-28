@@ -28,8 +28,8 @@ test.describe('游客登录完整链路', () => {
     await expect(page.getByTestId('player-bar')).toBeVisible()
     await expect(page.getByText('E2E Song A').first()).toBeVisible()
 
-    // 302 播放链路被命中
-    expect(state.song302Calls).toBeGreaterThan(0)
+    // 播放链路被命中（解灰默认开启，首候选为 JSON 直链）
+    expect(state.songJsonCalls).toBeGreaterThan(0)
   })
 
   test('播放过程中可打开全屏歌词页，高亮行不被遮挡', async ({ page }) => {

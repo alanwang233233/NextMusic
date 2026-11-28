@@ -84,7 +84,7 @@ export const usePlayerStore = defineStore('player', {
     volume: 0.9,
     muted: false,
     mode: 'order' as PlayMode,
-    /** 正在播放的音源（main302 / main302-unblock / outer） */
+    /** 正在播放的音源（main302 / mainJson / preloaded） */
     source: null as null | UrlResolution['source'],
     showNowPlaying: false,
     showQueue: false,

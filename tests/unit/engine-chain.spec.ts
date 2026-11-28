@@ -1,12 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { bindCookieProvider, MAIN_API_BASE } from '@/api/http'
-import { ATTEMPT_CHAIN, PlayerEngine, isTooShort, main302Url, resetEngineForTest, type AttemptKind } from '@/player/engine'
+import { fetchSongDirectUrl, isSongUnblockEnabled } from '@/api/song'
+import {
+  ATTEMPT_CHAIN,
+  PlayerEngine,
+  isTooShort,
+  main302Url,
+  resetEngineForTest,
+  type AttemptKind,
+} from '@/player/engine'
 import type { EngineCallbacks } from '@/player/engine'
 import type { Song } from '@/types/models'
 
-vi.mock('@/api/outer', () => ({
-  fetchOuterSongUrl: vi.fn(async (id: number) => ({ id, url: `https://outer.example/${id}.mp3`, br: 320000, level: 'exhigh', size: 1 })),
+vi.mock('@/api/song', () => ({
+  fetchSongDirectUrl: vi.fn(),
+  isSongUnblockEnabled: vi.fn(),
+  bindUnblockProvider: vi.fn(),
+  scrobble: vi.fn(),
+  fetchLyric: vi.fn(async () => ({ lrc: '', tlyric: '', romalrc: '', yrc: '' })),
 }))
+
+const fetchSongDirectUrlMock = vi.mocked(fetchSongDirectUrl)
+const unblockEnabledMock = vi.mocked(isSongUnblockEnabled)
 
 const song: Song = {
   id: 42,
@@ -15,6 +30,8 @@ const song: Song = {
   album: { id: 10, name: 'album' },
   duration: 200_000,
 }
+
+const JSON_FULL = { id: 42, url: 'https://cdn.example/json-42.flac', level: 'exhigh', freeTrialInfo: null }
 
 /** 可控的假 Audio：记录 src，手动派发事件 */
 class FakeAudio {
@@ -114,8 +131,8 @@ describe('main302Url', () => {
 })
 
 describe('ATTEMPT_CHAIN', () => {
-  it('降级顺序：302 → OuterAPI', () => {
-    expect(ATTEMPT_CHAIN).toEqual<AttemptKind[]>(['main302', 'outer'])
+  it('常规降级顺序：302（解灰候选项由 play 按开关动态前插）', () => {
+    expect(ATTEMPT_CHAIN).toEqual<AttemptKind[]>(['main302'])
   })
 })
 
@@ -126,13 +143,16 @@ describe('PlayerEngine 降级链', () => {
     FakeAudio.instances = []
     vi.stubGlobal('Audio', FakeAudio as unknown as typeof Audio)
     resetEngineForTest()
+    unblockEnabledMock.mockReturnValue(false)
+    fetchSongDirectUrlMock.mockReset().mockResolvedValue(JSON_FULL)
   })
 
   afterEach(() => {
+    unblockEnabledMock.mockReset()
     vi.unstubAllGlobals()
   })
 
-  it('第一次尝试即成功', async () => {
+  it('解灰关闭：第一次尝试即 302 直链', async () => {
     const { callbacks, resolvedUrls, failed } = makeCallbacks()
     const engine = new PlayerEngine(callbacks)
     fake = engine.audio as unknown as FakeAudio
@@ -145,47 +165,75 @@ describe('PlayerEngine 降级链', () => {
     fake.dispatch('loadedmetadata')
     fake.dispatch('playing')
     expect(failed).toHaveLength(0)
+    expect(fetchSongDirectUrlMock).not.toHaveBeenCalled()
   })
 
-  it('音频报错后直接推进到 OuterAPI', async () => {
+  it('解灰开启：首个尝试为 JSON 直链且携带 unblock=true', async () => {
+    unblockEnabledMock.mockReturnValue(true)
+    console.log('DEBUG mock-is-fn=', vi.isMockFunction(isSongUnblockEnabled), 'impl-return=', isSongUnblockEnabled())
+    const { callbacks, resolvedUrls, failed } = makeCallbacks()
+    const engine = new PlayerEngine(callbacks)
+    fake = engine.audio as unknown as FakeAudio
+
+    await engine.play(song, 'exhigh')
+    expect(resolvedUrls[0]).toBe('https://cdn.example/json-42.flac')
+    expect(failed).toHaveLength(0)
+    expect(fetchSongDirectUrlMock).toHaveBeenCalledWith(42, 'exhigh')
+    // unblock 参数在 mainApi 层附加（见 song-unblock.spec），此处验证 JSON 候选确实被消费
+    expect(resolvedUrls).toHaveLength(1)
+  })
+
+  it('解灰开启：JSON 直链失败后回退 302', async () => {
+    unblockEnabledMock.mockReturnValue(true)
+    fetchSongDirectUrlMock.mockRejectedValue(new Error('解灰直链不可用'))
     const { callbacks, resolvedUrls } = makeCallbacks()
     const engine = new PlayerEngine(callbacks)
     fake = engine.audio as unknown as FakeAudio
 
     await engine.play(song, 'exhigh')
-    expect(resolvedUrls[0]).toContain('/song/url/v1/302?id=42')
-
-    // 第一次失败 → OuterAPI
-    fake.dispatch('error')
-    await vi.waitFor(() => expect(resolvedUrls).toHaveLength(2))
-    expect(resolvedUrls[1]).toContain('outer.example/42.mp3')
+    // 失败的尝试不触发 onResolved：JSON 候选不可用时直接推进，成功解析的只有 302
+    await vi.waitFor(() => expect(resolvedUrls).toHaveLength(1))
+    expect(resolvedUrls[0]).toContain('/song/url/v1/302?id=42&level=exhigh')
+    expect(fetchSongDirectUrlMock).toHaveBeenCalledWith(42, 'exhigh')
   })
 
-  it('元数据时长过短也推进降级链', async () => {
+  it('解灰开启：JSON 返回试听片段（freeTrialInfo）时回退 302', async () => {
+    unblockEnabledMock.mockReturnValue(true)
+    fetchSongDirectUrlMock.mockResolvedValue({
+      id: 42, url: 'https://cdn.example/trial.mp3', freeTrialInfo: { start: 0, end: 30 },
+    })
     const { callbacks, resolvedUrls, failed } = makeCallbacks()
     const engine = new PlayerEngine(callbacks)
     fake = engine.audio as unknown as FakeAudio
 
-    await engine.play(song, 'standard')
-    // 试听片段 30 秒（歌曲 200 秒）
-    fake.duration = 30
-    fake.dispatch('loadedmetadata')
-    await vi.waitFor(() => expect(resolvedUrls).toHaveLength(2))
-    // 第二步 OuterAPI
-    expect(resolvedUrls[1]).toContain('outer.example/42.mp3')
+    await engine.play(song, 'exhigh')
+    // 试听片段候选不触发 onResolved，直接推进 302
+    await vi.waitFor(() => expect(resolvedUrls).toHaveLength(1))
+    expect(resolvedUrls[0]).toContain('/song/url/v1/302?id=42&level=exhigh')
     expect(failed).toHaveLength(0)
   })
 
-  it('全部尝试失败后回调 onFailed（且只回调一次）', async () => {
+  it('解灰开启：JSON 返回空 url（灰曲未解锁）时回退 302', async () => {
+    unblockEnabledMock.mockReturnValue(true)
+    fetchSongDirectUrlMock.mockResolvedValue({ id: 42, url: null })
+    const { callbacks, resolvedUrls } = makeCallbacks()
+    const engine = new PlayerEngine(callbacks)
+    fake = engine.audio as unknown as FakeAudio
+
+    await engine.play(song, 'exhigh')
+    // 空 url 候选不触发 onResolved，直接推进 302
+    await vi.waitFor(() => expect(resolvedUrls).toHaveLength(1))
+    expect(resolvedUrls[0]).toContain('/song/url/v1/302?id=42&level=exhigh')
+    expect(fetchSongDirectUrlMock).toHaveBeenCalledWith(42, 'exhigh')
+  })
+
+  it('解灰关闭：302 失败后链路耗尽并回调 onFailed（只回调一次）', async () => {
     const { callbacks, resolvedUrls, failed } = makeCallbacks()
     const engine = new PlayerEngine(callbacks)
     fake = engine.audio as unknown as FakeAudio
 
-    // 第一步 main302 失败 → outer 接管
     await engine.play(song, 'standard')
-    fake.dispatch('error')
-    await vi.waitFor(() => expect(resolvedUrls).toHaveLength(2))
-    // 第二步 outer 失败 → 链路耗尽
+    fake.currentSrc = fake.src
     fake.dispatch('error')
     await vi.waitFor(() => expect(failed).toHaveLength(1))
     // 链路已耗尽，继续派发错误不再累积失败回调
@@ -208,14 +256,16 @@ describe('PlayerEngine 降级链', () => {
   })
 
   it('currentSrc 匹配时 error 正常推进链路', async () => {
+    unblockEnabledMock.mockReturnValue(true)
     const { callbacks, resolvedUrls } = makeCallbacks()
     const engine = new PlayerEngine(callbacks)
     fake = engine.audio as unknown as FakeAudio
 
-    await engine.play(song, 'standard')
+    await engine.play(song, 'exhigh')
     fake.currentSrc = fake.src // 浏览器已选中当前资源
     fake.dispatch('error')
     await vi.waitFor(() => expect(resolvedUrls).toHaveLength(2))
+    expect(resolvedUrls[1]).toContain('/song/url/v1/302?id=42')
   })
 
   it('旧歌曲残留的 loadedmetadata（时长过短）不会影响新歌', async () => {
@@ -252,6 +302,8 @@ describe('PlayerEngine 预缓存命中', () => {
     FakeAudio.instances = []
     vi.stubGlobal('Audio', FakeAudio as unknown as typeof Audio)
     resetEngineForTest()
+    unblockEnabledMock.mockReturnValue(false)
+    fetchSongDirectUrlMock.mockReset().mockResolvedValue(JSON_FULL)
   })
 
   afterEach(() => {
@@ -261,7 +313,6 @@ describe('PlayerEngine 预缓存命中', () => {
   it('preloaded 作为第 0 步直接使用', async () => {
     const { callbacks, resolvedUrls } = makeCallbacks()
     const engine = new PlayerEngine(callbacks)
-    const fakeAudio = engine.audio as unknown as FakeAudio
 
     await engine.play(song, 'exhigh', { url: 'https://precache.example/42.mp3', source: 'main302' })
     expect(resolvedUrls[0]).toBe('https://precache.example/42.mp3')
@@ -279,6 +330,23 @@ describe('PlayerEngine 预缓存命中', () => {
     await vi.waitFor(() => expect(resolvedUrls).toHaveLength(2))
     expect(resolvedUrls[1]).toContain('/song/url/v1/302?id=42&level=exhigh')
   })
+
+  it('解灰开启时 preloaded 失败后先试 JSON 直链再 302', async () => {
+    unblockEnabledMock.mockReturnValue(true)
+    const { callbacks, resolvedUrls } = makeCallbacks()
+    const engine = new PlayerEngine(callbacks)
+    const fakeAudio = engine.audio as unknown as FakeAudio
+
+    fetchSongDirectUrlMock.mockRejectedValue(new Error('解灰直链不可用'))
+    await engine.play(song, 'exhigh', { url: 'https://precache.example/42.mp3', source: 'main302' })
+    fakeAudio.currentSrc = 'https://precache.example/42.mp3'
+    fakeAudio.dispatch('error')
+    // 预缓存成功解析（onResolved）→ 失败推进；JSON 候选失败不触发 onResolved → 成功解析的只有 302
+    await vi.waitFor(() => expect(resolvedUrls).toHaveLength(2))
+    expect(resolvedUrls[0]).toBe('https://precache.example/42.mp3')
+    expect(resolvedUrls[1]).toContain('/song/url/v1/302?id=42&level=exhigh')
+    expect(fetchSongDirectUrlMock).toHaveBeenCalledWith(42, 'exhigh')
+  })
 })
 
 describe('PlayerEngine 缓冲状态', () => {
@@ -286,6 +354,8 @@ describe('PlayerEngine 缓冲状态', () => {
     FakeAudio.instances = []
     vi.stubGlobal('Audio', FakeAudio as unknown as typeof Audio)
     resetEngineForTest()
+    unblockEnabledMock.mockReturnValue(false)
+    fetchSongDirectUrlMock.mockReset().mockResolvedValue(JSON_FULL)
   })
 
   afterEach(() => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { formatCount, formatDuration } from '@/utils/format'
-import { httpsUrl, normSong, parseDurationText, withImageSize } from '@/api/normalize'
+import { httpsUrl, normSong, withImageSize } from '@/api/normalize'
 
 describe('formatDuration', () => {
   it('毫秒转 m:ss', () => {
@@ -39,15 +39,6 @@ describe('httpsUrl / withImageSize', () => {
   })
 })
 
-describe('parseDurationText', () => {
-  it('解析 m:ss 与 h:mm:ss', () => {
-    expect(parseDurationText('3:14')).toBe(194_000)
-    expect(parseDurationText('1:02:03')).toBe(3_723_000)
-    expect(parseDurationText('abc')).toBe(0)
-    expect(parseDurationText(undefined)).toBe(0)
-  })
-})
-
 describe('normSong', () => {
   it('归一化网易云标准结构（ar/al/dt）', () => {
     const song = normSong({
@@ -80,20 +71,6 @@ describe('normSong', () => {
     expect(song.artists[0].name).toBe('A')
   })
 
-  it('归一化 OuterAPI 结构（singer 字符串 + duration 文本）', () => {
-    const song = normSong({
-      id: 3,
-      name: 'outer',
-      singer: 'A/B',
-      album: 'album-name',
-      picimg: 'https://p1.music.126.net/z.jpg',
-      duration: '3:03',
-      source: 'outer',
-    })
-    expect(song.artists.map((a) => a.name).join('/')).toBe('A/B')
-    expect(song.duration).toBe(183_000)
-    expect(song.source).toBe('outer')
-  })
 
   it('无歌手时兜底未知歌手', () => {
     const song = normSong({ id: 4, name: 'x' })

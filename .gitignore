@@ -9,3 +9,4 @@ playwright-report/
 .omc/
 .DS_Store
 *.tsbuildinfo
+desktop-release/

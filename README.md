@@ -1,6 +1,6 @@
 # NextMusic
 
-基于网易云音乐的纯客户端音乐播放器：**Web（SPA）与桌面版（Electron，Windows / macOS / Linux）双形态**。无自建后端——Web 版直连自部署的主 NeteaseCloudMusicApi 兼容接口与 OuterAPI，桌面版内置本地运行 api-enhanced 服务；登录态与播放降级全部在客户端处理。
+基于网易云音乐的纯客户端音乐播放器：**Web（SPA）与桌面版（Electron，Windows / macOS / Linux）双形态**。无自建后端——Web 版直连自部署的主 NeteaseCloudMusicApi 兼容接口，桌面版内置本地运行 api-enhanced 服务；登录态与播放降级全部在客户端处理。
 
 ![Library](Screenshot_index.png)
 
@@ -13,10 +13,10 @@
 - **我的音乐**：喜欢的音乐、最近播放、收藏的专辑与歌手
 - **播放器**：播放条与全屏播放页（歌词 + 翻译开关）、播放队列抽屉、顺序 / 单曲循环 / 随机三种播放模式
 - **音质**：标准至超清母带共 10 档可选（部分为 VIP 档，能否生效取决于账号与音源）
-- **解灰**：设置中可开关（默认开启，全平台可用），歌曲请求附带解灰参数，对 VIP/灰色歌曲尝试获取完整音频——主 API 需支持解灰（如 api-enhanced），不支持时自动回退试听片段/OuterAPI 兜底
+- **解灰**：设置中可开关（默认开启，全平台可用），歌曲请求附带解灰参数，对 VIP/灰色歌曲尝试获取完整音频——主 API 需支持解灰（如 api-enhanced），不支持时自动回退试听片段
 - **播放可靠性**：
   - 播放进度 ≥50% 时自动预缓存下一曲，命中后直接作为播放第 0 步
-  - 播放降级链：预缓存命中 → 主 API `/song/url/v1/302` → OuterAPI，加载失败或命中试听片段（时长过短）自动推进下一步
+  - 播放降级链：主 API JSON 直链（解灰开启时附带 unblock 参数）→ 主 API `/song/url/v1/302`，预缓存命中则直接以缓存音频播放；加载失败或命中试听片段（时长过短）自动推进下一步
 - **下载**：优先获取下载直链（blob 下载），失败回退浏览器新标签页；不属于写操作，各登录模式均可用
 - **键盘快捷键**：空格 播放 / 暂停，← / → 切歌，Ctrl/⌘ + ↑ / ↓ 音量调节（输入框聚焦时不劫持）
 - **登录与权限**：手机号 / 邮箱 / 扫码 / 游客 / 虚拟登录；游客与虚拟模式为只读，写操作（喜欢、收藏、歌单编辑、FM 垃圾桶）统一拦截并提示
@@ -49,8 +49,6 @@ npm run dev
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
 | `VITE_MAIN_API` | 是 | 主 API 地址（构建时注入），例如自部署的 NeteaseCloudMusicApi Enhanced 实例；缺失时运行时直接抛错 |
-| `VITE_OUTER_API` | 否 | OuterAPI 地址，默认 `https://nextmusic.toubiec.cn` |
-| `VITE_OUTER_IP` | 否 | OuterAPI 携带的 `ip` 参数，默认为会话内随机中国 IP |
 
 ## 部署到 Vercel
 
@@ -63,7 +61,6 @@ npm run dev
 3. Framework Preset 会自动识别为 **Vite**（`vercel.json` 已配置构建命令）
 4. 在 **Environment Variables** 中添加：
    - `VITE_MAIN_API` = 你的主 API 地址（必填，例如自部署的 NeteaseCloudMusicApi Enhanced 实例）
-   - `VITE_OUTER_API` / `VITE_OUTER_IP`（可选，见 `.env.example`）
 5. 点击 **Deploy**，构建完成后即可访问
 
 > 注意：`VITE_MAIN_API` 是构建时变量，修改后需要重新触发部署才会生效。
@@ -111,7 +108,7 @@ npm run desktop:build:linux      # AppImage + deb + rpm + pacman + flatpak + sna
 
 ```
 src/
-├── api/          # 唯一网络层：主 API（mainApi）与 OuterAPI（outerApi）
+├── api/          # 唯一网络层：主 API（mainApi）
 ├── player/       # 播放引擎（engine.ts）与下一曲预缓存（precache.ts）
 ├── stores/       # Pinia：auth / player / settings / toast
 ├── composables/  # 写操作守卫、全局键盘快捷键、播放设备管理等

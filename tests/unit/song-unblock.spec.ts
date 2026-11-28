@@ -15,7 +15,6 @@ vi.mock('@/api/http', () => ({
   bindMainApiOverride: vi.fn(),
   normalizeApiBase: (url: string) => url.trim().replace(/\/+$/, ''),
   MAIN_API_BASE: 'https://mainapi.test',
-  OUTER_API_BASE: 'https://nextmusic.toubiec.cn',
   mainApi: (...args: unknown[]) => mainApiMock(...args),
 }))
 

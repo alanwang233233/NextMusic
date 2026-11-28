@@ -28,7 +28,7 @@ export async function fetchSongDirectUrl(id: number, level: string): Promise<Son
   const body = await mainApi<{ data: SongUrlResult[] | null }>(
     '/song/url/v1',
     // 解灰开启时附带 unblock=true：服务端对 VIP/灰色歌曲尝试换取完整音频（本地与远程增强版实例均支持）
-    { id, level, ...(unblockEnabled() ? { unblock: true } : {}) },
+    { id, level, ...(isSongUnblockEnabled() ? { unblock: true } : {}) },
   )
   return normalizeSongUrlResult(body.data?.[0] ?? {})
 }
@@ -42,7 +42,8 @@ export function bindUnblockProvider(fn: UnblockProvider | null): void {
   unblockProvider = fn
 }
 
-function unblockEnabled(): boolean {
+/** 解灰开关当前值（engine 链据此决定是否前插 JSON 直链候选） */
+export function isSongUnblockEnabled(): boolean {
   try {
     return unblockProvider?.() ?? false
   } catch {

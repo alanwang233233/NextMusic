@@ -14,7 +14,6 @@ const mainApiMock = vi.fn(async (_path: string, params: { ids: string }) => ({
 
 vi.mock('@/api/http', () => ({
   mainApi: (...args: unknown[]) => mainApiMock(...(args as [string, { ids: string }])),
-  outerApi: vi.fn(),
   ApiError: class extends Error {
     code: number
     constructor(code: number, message: string) {

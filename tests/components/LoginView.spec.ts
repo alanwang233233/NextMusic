@@ -39,7 +39,6 @@ const mainApiMock = vi.fn(async (path: string) => {
 
 vi.mock('@/api/http', () => ({
   mainApi: (...args: unknown[]) => mainApiMock(...(args as [string])),
-  outerApi: vi.fn(),
   ApiError: class extends Error {
     code: number
     constructor(code: number, message: string) {
@@ -50,7 +49,6 @@ vi.mock('@/api/http', () => ({
   WriteBlockedError: class extends Error {},
   bindCookieProvider: vi.fn(),
   MAIN_API_BASE: 'https://mainapi.test',
-  OUTER_API_BASE: 'https://nextmusic.toubiec.cn',
 }))
 
 describe('LoginView', () => {

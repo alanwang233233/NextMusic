@@ -37,40 +37,29 @@ function toAlbumRef(raw: Raw): AlbumRef {
   return {
     id: Number(al.id) || 0,
     name: String(al.name || raw.album || '未知专辑'),
-    picUrl: httpsUrl(al.picUrl || al.pic || raw.picimg || raw.picUrl),
+    picUrl: httpsUrl(al.picUrl || al.pic || raw.picUrl),
   }
 }
 
 /**
- * 归一化歌曲对象，兼容三种来源：
+ * 归一化歌曲对象，兼容两种来源：
  * - 网易云标准结构（ar/al/dt）
  * - 私人 FM 结构（artists/album/duration）
- * - OuterAPI 结构（singer 字符串、duration "m:ss"、picimg）
  */
 export function normSong(raw: Raw): Song {
   const artists = toArtistRefs(raw)
-  const durationMs = typeof raw.dt === 'number' ? raw.dt : typeof raw.duration === 'number' ? raw.duration : parseDurationText(raw.duration)
+  const durationMs = typeof raw.dt === 'number' ? raw.dt : typeof raw.duration === 'number' ? raw.duration : 0
   return {
     id: Number(raw.id) || 0,
     name: String(raw.name || '未知歌曲'),
     alias: Array.isArray(raw.alia) ? raw.alia.filter(Boolean).map(String) : Array.isArray(raw.alias) ? raw.alias.filter(Boolean).map(String) : undefined,
-    artists: artists.length ? artists : [{ id: 0, name: String(raw.singer || '未知歌手') }],
+    artists: artists.length ? artists : [{ id: 0, name: '未知歌手' }],
     album: toAlbumRef(raw),
     duration: durationMs,
     fee: raw.fee,
     mvId: raw.mv && Number(raw.mv) > 0 ? Number(raw.mv) : undefined,
-    source: raw.source === 'outer' ? 'outer' : 'netease',
+    source: 'netease',
   }
-}
-
-/** "3:14" -> 194000；无法解析返回 0 */
-export function parseDurationText(text?: string): number {
-  if (!text || typeof text !== 'string') return 0
-  const parts = text.split(':').map((p) => Number(p))
-  if (parts.some((p) => Number.isNaN(p))) return 0
-  if (parts.length === 2) return (parts[0] * 60 + parts[1]) * 1000
-  if (parts.length === 3) return (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000
-  return 0
 }
 
 export function normPlaylist(raw: Raw): Playlist {

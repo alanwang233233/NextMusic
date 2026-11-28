@@ -12,9 +12,6 @@ vi.mock('@/api/song', () => ({
   })),
 }))
 
-vi.mock('@/api/outer', () => ({
-  fetchOuterSongUrl: vi.fn(async (id: number) => ({ id, url: 'http://outer.example/7.mp3', br: 320000, level: 'exhigh', size: 1 })),
-}))
 
 /** 可控假 Audio：手动派发 canplay / error，可设 duration */
 class FakeAudio {
@@ -88,14 +85,6 @@ describe('NextSongPreloader（数据级 Blob 缓存）', () => {
       url: 'http://cdn.example/direct.mp3',
       level,
       type: 'mp3',
-      size: 1,
-    }))
-    const { fetchOuterSongUrl } = await import('@/api/outer')
-    vi.mocked(fetchOuterSongUrl).mockImplementation(async (id: number) => ({
-      id,
-      url: 'http://outer.example/7.mp3',
-      br: 320000,
-      level: 'exhigh',
       size: 1,
     }))
   })
@@ -176,7 +165,7 @@ describe('NextSongPreloader（数据级 Blob 缓存）', () => {
     expect(outcome!.blob).toBeFalsy()
   })
 
-  it('主候选试听过短 → 302 也过短 → OuterAPI 直链 Blob 化', async () => {
+  it('主候选试听过短 → 302 也过短 → 候选链耗尽返回 null', async () => {
     const promise = nextSongPreloader.preload(song, 'standard')
     // 第一候选：JSON 直链 Blob（试听 30s）
     await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(1))
@@ -187,20 +176,16 @@ describe('NextSongPreloader（数据级 Blob 缓存）', () => {
     expect(lastProbe().src).toContain('/song/url/v1/302?id=7')
     lastProbe().duration = 30
     lastProbe().dispatch('error')
-    // 第三候选：OuterAPI 直链 Blob（完整时长）
-    await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(3))
-    expect(fetchMock).toHaveBeenCalledWith('http://outer.example/7.mp3')
-    expect(lastProbe().src).toBe('blob:mock-2')
-    lastProbe().duration = 200
-    lastProbe().dispatch('canplay')
+    // 候选链耗尽
+    await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(2))
     const outcome = await promise
-    expect(outcome!.source).toBe('outer')
-    expect(outcome!.blob).toBe(true)
+    expect(outcome).toBeNull()
   })
 
   it('全部候选失败返回 null', async () => {
     const promise = nextSongPreloader.preload(song, 'standard')
-    for (let i = 0; i < 3; i++) {
+    // 候选链现在只有两项：JSON 直链 + 302
+    for (let i = 0; i < 2; i++) {
       await vi.waitFor(() => expect(FakeAudio.instances.length).toBe(i + 1))
       lastProbe().dispatch('error')
     }

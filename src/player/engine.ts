@@ -1,11 +1,11 @@
 import { getCookie, requireMainApiBase } from '@/api/http'
-import { fetchOuterSongUrl } from '@/api/outer'
+import { fetchSongDirectUrl, isSongUnblockEnabled } from '@/api/song'
 import type { Song, UrlSource } from '@/types/models'
 
-/** 播放降级链：0) 预缓存命中 1) 302 新版接口 2) OuterAPI（失败指数退避重试） */
-export type AttemptKind = 'main302' | 'outer' | 'preloaded'
+/** 播放降级链：0) 预缓存命中 1) JSON 直链（解灰开启时，携带 unblock） 2) 302 端点 */
+export type AttemptKind = 'main302' | 'mainJson' | 'preloaded'
 
-export const ATTEMPT_CHAIN: AttemptKind[] = ['main302', 'outer']
+export const ATTEMPT_CHAIN: AttemptKind[] = ['main302']
 
 export function attemptSource(kind: AttemptKind, preloaded?: UrlResolution): UrlSource {
   if (kind === 'preloaded') return preloaded?.source ?? 'main302'
@@ -37,13 +37,16 @@ export interface UrlResolution {
 
 /**
  * 对单次尝试求值：
+ * - mainJson：主 API JSON 直链（解灰开启时服务端尝试换取完整音频）；试听片段或无链接则推进下一候选
  * - main302：直接返回 302 地址，由 audio 元数据校验
- * - outer：先请求 OuterAPI 拿直链
  */
 export async function resolveAttempt(kind: AttemptKind, song: Song, level: string): Promise<UrlResolution> {
-  if (kind === 'outer') {
-    const data = await fetchOuterSongUrl(song.id, level)
-    return { url: data.url, source: 'outer' }
+  if (kind === 'mainJson') {
+    const direct = await fetchSongDirectUrl(song.id, level)
+    if (!direct.url || direct.freeTrialInfo) {
+      throw new Error('JSON 直链不可用（试听片段或无链接）')
+    }
+    return { url: direct.url, source: 'mainJson' }
   }
   return { url: main302Url(song.id, level), source: attemptSource(kind) }
 }
@@ -136,14 +139,19 @@ export class PlayerEngine {
 
   /**
    * 开始播放歌曲（触发降级链）。
-   * @param preloaded 预缓存命中的地址，作为第 0 步直接使用，失败后继续走常规链路
+   * @param preloaded 预缓存命中的地址，作为第 0 步直接使用，失败后继续常规链路
    */
   async play(song: Song, level: string, preloaded?: UrlResolution): Promise<void> {
     const myToken = ++this.token
     this.currentSong = song
     this.level = level
     this.preloadedFirst = preloaded ?? null
-    this.chain = preloaded ? ['preloaded', ...ATTEMPT_CHAIN] : [...ATTEMPT_CHAIN]
+    // 解灰开启时在常规链路前插入 JSON 直链候选（携带 unblock=true，服务端尝试换取完整音频）
+    this.chain = [
+      ...(preloaded ? ['preloaded' as AttemptKind] : []),
+      ...(isSongUnblockEnabled() ? (['mainJson'] as AttemptKind[]) : []),
+      ...ATTEMPT_CHAIN,
+    ]
     this.chainIndex = 0
     this.activeSourceValue = null
     this.pendingUrl = null

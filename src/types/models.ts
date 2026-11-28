@@ -22,7 +22,7 @@ export interface Song {
   /** 0 免费或无版权 1 VIP 4 购买专辑 8 非会员可播低音质 */
   fee?: number
   mvId?: number
-  source?: 'netease' | 'outer'
+  source?: 'netease'
 }
 
 export interface PlaylistCreator {
@@ -128,4 +128,4 @@ export type QualityLevel =
   | 'jymaster'
   | 'sky'
 
-export type UrlSource = 'main302' | 'outer'
+export type UrlSource = 'main302' | 'mainJson'
