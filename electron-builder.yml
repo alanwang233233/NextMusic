@@ -38,3 +38,7 @@ linux:
 snap:
   confinement: strict
   summary: 第三方网易云音乐桌面客户端
+# flatpak：electron-builder 默认 runtime/base 为 20.08（flathub 已下架），需对齐现行版本
+flatpak:
+  runtimeVersion: 24.08
+  baseVersion: 24.08
