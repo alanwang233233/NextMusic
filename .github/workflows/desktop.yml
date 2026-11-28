@@ -39,11 +39,17 @@ jobs:
       # flatpak/flatpak-builder：electron-builder flatpak 目标依赖（ubuntu 镜像不含 builder）
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y flatpak flatpak-builder
+      # flatpak 子命令输出被 @malept/flatpak-bundler 吞进 debug() 日志（默认不可见），
+      # 用 shim 强制透传落盘，失败时 dump 诊断
+      - if: runner.os == 'Linux'
+        run: |
+          sudo mv /usr/bin/flatpak /usr/bin/flatpak.real
+          printf '#!/bin/bash\n/usr/bin/flatpak.real "$@" 2>&1 | tee -a /tmp/flatpak-trace.log\nexit ${PIPESTATUS[0]}\n' | sudo tee /usr/bin/flatpak >/dev/null
+          sudo chmod +x /usr/bin/flatpak
       # 桌面构建内含 Web 构建（强制置空 VITE_MAIN_API，防私有地址入包）
-      # Linux 的 flatpak 打包子命令输出走 debug('flatpak-bundler')，默认不可见，开启以便失败时诊断
       - run: npm run ${{ matrix.script }}
-        env:
-          DEBUG: ${{ runner.os == 'Linux' && 'flatpak-bundler' || '' }}
+      - if: failure() && runner.os == 'Linux'
+        run: tail -80 /tmp/flatpak-trace.log || true
       - uses: actions/upload-artifact@v4
         with:
           name: NextMusic-${{ matrix.artifact }}
