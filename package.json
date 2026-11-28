@@ -8,6 +8,8 @@
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc -b",
+    "typecheck:electron": "tsc -p electron/tsconfig.json",
+    "desktop:build:electron": "esbuild electron/src/main.ts electron/src/preload.ts --bundle --platform=node --format=cjs --target=node20 --outdir=electron/dist --out-extension:.js=.cjs --external:electron --external:@neteasecloudmusicapienhanced/api",
     "test:unit": "vitest run tests/unit",
     "test:components": "vitest run tests/components",
     "test": "vitest run",
@@ -16,6 +18,7 @@
     "e2e:report": "playwright show-report"
   },
   "dependencies": {
+    "@neteasecloudmusicapienhanced/api": "^4.41.1",
     "pinia": "^3.0.3",
     "vue": "^3.5.13",
     "vue-router": "^4.5.0"
@@ -26,6 +29,9 @@
     "@vitejs/plugin-vue": "^6.0.0",
     "@vue/test-utils": "^2.4.6",
     "autoprefixer": "^10.4.20",
+    "electron": "^45.5.0",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
     "jsdom": "^26.1.0",
     "postcss": "^8.5.1",
     "tailwindcss": "^3.4.17",
