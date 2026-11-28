@@ -62,7 +62,9 @@ jobs:
       # ubuntu-24.04 runner 的 SUID sandbox 配置损坏（microsoft/playwright#34251），
       # Electron 渲染进程 sandbox 需要非特权 user namespace
       - run: sudo sysctl -w kernel.unprivileged_userns_clone=1
-      - run: npx playwright test tests/e2e/desktop.smoke.spec.ts
+      # Electron 需要真实 X server（headless 不适用），无头 runner 用 xvfb 虚拟显示
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - run: xvfb-run --auto-servernum npx playwright test tests/e2e/desktop.smoke.spec.ts
       - run: npm run test
 
   release:
