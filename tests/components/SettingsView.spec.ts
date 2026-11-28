@@ -93,13 +93,14 @@ describe('SettingsView 桌面板块', () => {
     delete (globalThis as Record<string, unknown>).nextmusicDesktop
   })
 
-  it('无桥接（纯 Web）时不渲染桌面板块', () => {
+  it('无桥接（纯 Web）时不渲染桌面板块，但解灰开关全平台可见', () => {
     const wrapper = mount(SettingsView)
     expect(wrapper.find('[data-testid="desktop-section"]').exists()).toBe(false)
     expect(useAudioOutput).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="unblock-toggle"]').exists()).toBe(true)
   })
 
-  it('有桥接时渲染设备/主 API/解灰三块，当前设备带勾', () => {
+  it('有桥接时桌面板块渲染设备/主 API 两块（解灰已移至全局板块），当前设备带勾', () => {
     stubBridge()
     stubAudioOutput('abc')
     const wrapper = mount(SettingsView)
@@ -107,7 +108,7 @@ describe('SettingsView 桌面板块', () => {
     expect(section.exists()).toBe(true)
     expect(section.text()).toContain('播放设备')
     expect(section.text()).toContain('主 API')
-    expect(section.text()).toContain('解灰')
+    expect(section.text()).not.toContain('解灰')
     expect(wrapper.find('[data-testid="audio-device-default"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="audio-device-abc"]').exists()).toBe(true)
     // 当前设备行带 check 图标（svg）
@@ -142,9 +143,7 @@ describe('SettingsView 桌面板块', () => {
     expect(store.mainApiBaseOverride).toBe('')
   })
 
-  it('解灰开关切换 store 状态', async () => {
-    stubBridge()
-    stubAudioOutput()
+  it('解灰开关切换 store 状态（全平台，无桥接也可用）', async () => {
     const wrapper = mount(SettingsView)
     expect(useSettingsStore().generalUnblock).toBe(true)
     await wrapper.find('[data-testid="unblock-toggle"]').trigger('click')

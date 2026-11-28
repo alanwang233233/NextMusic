@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { nextSongPreloader } from '@/player/precache'
 import { bindMainApiOverride, normalizeApiBase } from '@/api/http'
+import { bindUnblockProvider } from '@/api/song'
 import { getDesktopBridge } from '@/utils/desktop'
 import type { QualityLevel } from '@/types/models'
 
@@ -63,21 +64,15 @@ export const useSettingsStore = defineStore('settings', {
       this.mainApiBaseOverride = normalizeApiBase(url)
       this.persist()
     },
-    /** 桌面端解灰开关：持久化并同步给主进程（env 为每请求读取，可热切换） */
+    /** 解灰开关（全平台）：持久化；开启后 /song/url/v1 请求附带 unblock=true（见 song.ts provider） */
     setGeneralUnblock(enabled: boolean) {
       this.generalUnblock = enabled
-      void getDesktopBridge()
-        ?.setGeneralUnblock(enabled)
-        .catch(() => undefined)
       this.persist()
     },
-    /** App.vue 启动时调用一次：绑定主 API 覆盖 provider 并同步解灰初值（仅桌面环境有实际动作） */
+    /** App.vue 启动时调用一次：绑定主 API 覆盖 provider（仅桌面环境有实际动作） */
     bindDesktopBridge() {
       if (!getDesktopBridge()) return
       bindMainApiOverride(() => this.mainApiBaseOverride)
-      void getDesktopBridge()
-        ?.setGeneralUnblock(this.generalUnblock)
-        .catch(() => undefined)
     },
     persist() {
       try {
@@ -96,4 +91,13 @@ export const useSettingsStore = defineStore('settings', {
       }
     },
   },
+})
+
+// 解灰开关接入请求层（模块加载即生效，仿 auth.ts bindCookieProvider 的注册模式）
+bindUnblockProvider(() => {
+  try {
+    return useSettingsStore().generalUnblock
+  } catch {
+    return false
+  }
 })

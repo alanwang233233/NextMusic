@@ -25,8 +25,38 @@ export interface SongUrlResult {
 }
 
 export async function fetchSongDirectUrl(id: number, level: string): Promise<SongUrlResult> {
-  const body = await mainApi<{ data: SongUrlResult[] | null }>('/song/url/v1', { id, level })
-  return body.data?.[0] ?? {}
+  const body = await mainApi<{ data: SongUrlResult[] | null }>(
+    '/song/url/v1',
+    // 解灰开启时附带 unblock=true：服务端对 VIP/灰色歌曲尝试换取完整音频（本地与远程增强版实例均支持）
+    { id, level, ...(unblockEnabled() ? { unblock: true } : {}) },
+  )
+  return normalizeSongUrlResult(body.data?.[0] ?? {})
+}
+
+type UnblockProvider = () => boolean
+
+let unblockProvider: UnblockProvider | null = null
+
+/** 由 settings store 注册解灰开关读取函数（仿 bindCookieProvider） */
+export function bindUnblockProvider(fn: UnblockProvider | null): void {
+  unblockProvider = fn
+}
+
+function unblockEnabled(): boolean {
+  try {
+    return unblockProvider?.() ?? false
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 归一化上游怪癖：解灰成功后 freeTrialInfo 为字符串 "null"（truthy！）
+ * 会被预缓存误判为试听片段而放弃整段音频，统一归一化为 null。
+ */
+function normalizeSongUrlResult(result: SongUrlResult): SongUrlResult {
+  if (typeof result.freeTrialInfo === 'string') result.freeTrialInfo = null
+  return result
 }
 
 /** 获取歌词（新版，含逐字歌词） */

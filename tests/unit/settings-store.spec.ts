@@ -92,7 +92,7 @@ describe('settings store 桌面端设置', () => {
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).mainApiBaseOverride).toBe('')
   })
 
-  it('setGeneralUnblock：持久化并同步给桌面桥接', () => {
+  it('setGeneralUnblock：持久化（解灰经请求参数 unblock=true 生效，不再同步桥接 env）', () => {
     const bridgeSpy = vi.fn().mockResolvedValue(true)
     ;(globalThis as Record<string, unknown>).nextmusicDesktop = {
       mainApiBase: 'http://127.0.0.1:34567',
@@ -102,7 +102,8 @@ describe('settings store 桌面端设置', () => {
     store.setGeneralUnblock(false)
     expect(store.generalUnblock).toBe(false)
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).generalUnblock).toBe(false)
-    expect(bridgeSpy).toHaveBeenCalledWith(false)
+    // 通用解灰 env 翻转为上游死代码路径，请求层 unblock 参数才是真实机制（见 song.ts）
+    expect(bridgeSpy).not.toHaveBeenCalled()
   })
 
   it('无桥接时桌面动作不抛错（纯 Web 安全）', () => {

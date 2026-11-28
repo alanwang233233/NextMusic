@@ -27,6 +27,8 @@ vi.mock('@/api/user', () => ({
 
 vi.mock('@/api/song', () => ({
   scrobble: vi.fn(async () => ({ code: 200 })),
+  // settings 模块加载时注册解灰 provider（ song.ts 导出），mock 需覆盖
+  bindUnblockProvider: vi.fn(),
 }))
 
 import type { PreloadOutcome } from '@/player/precache'

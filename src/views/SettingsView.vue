@@ -93,6 +93,32 @@ function toggleUnblock(): void {
       </div>
     </section>
 
+    <!-- 解灰（全平台）：开启后 /song/url/v1 请求附带 unblock=true（主 API 需支持解灰） -->
+    <section class="mt-8">
+      <SectionHeader title="解灰" subtitle="对 VIP/灰色歌曲尝试自动解锁；主 API 不支持时自动回退试听片段" />
+      <div class="card-surface overflow-hidden">
+        <button
+          class="flex w-full items-center justify-between px-4 py-3 text-sm transition hover:bg-zinc-800/60"
+          data-testid="unblock-toggle"
+          @click="toggleUnblock"
+        >
+          <span class="text-left">
+            <span class="block text-zinc-300">启用解灰</span>
+            <span class="mt-0.5 block text-xs text-zinc-500">歌曲请求附带解灰参数，尝试获取完整音频</span>
+          </span>
+          <span
+            class="relative h-5 w-9 shrink-0 rounded-full transition"
+            :class="settings.generalUnblock ? 'bg-primary-600' : 'bg-zinc-700'"
+          >
+            <span
+              class="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all"
+              :class="settings.generalUnblock ? 'left-[18px]' : 'left-0.5'"
+            ></span>
+          </span>
+        </button>
+      </div>
+    </section>
+
     <!-- 桌面版（仅 Electron 环境渲染） -->
     <section v-if="isDesktop" class="mt-8" data-testid="desktop-section">
       <SectionHeader title="桌面版" subtitle="NextMusic 桌面客户端专属设置" />
@@ -142,26 +168,6 @@ function toggleUnblock(): void {
           </div>
           <p class="mt-1.5 text-xs text-zinc-500">留空使用应用内置的本地 API 服务；自定义地址保存后立即生效</p>
         </div>
-        <!-- 解灰 -->
-        <button
-          class="flex w-full items-center justify-between px-4 py-3 text-sm transition hover:bg-zinc-800/60"
-          data-testid="unblock-toggle"
-          @click="toggleUnblock"
-        >
-          <span class="text-left">
-            <span class="block text-zinc-300">解灰</span>
-            <span class="mt-0.5 block text-xs text-zinc-500">对 VIP/灰色歌曲尝试自动解锁</span>
-          </span>
-          <span
-            class="relative h-5 w-9 shrink-0 rounded-full transition"
-            :class="settings.generalUnblock ? 'bg-primary-600' : 'bg-zinc-700'"
-          >
-            <span
-              class="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all"
-              :class="settings.generalUnblock ? 'left-[18px]' : 'left-0.5'"
-            ></span>
-          </span>
-        </button>
       </div>
     </section>
 
