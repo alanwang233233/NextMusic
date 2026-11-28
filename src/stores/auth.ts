@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ApiError, WriteBlockedError, bindCookieProvider } from '@/api/http'
 import * as authApi from '@/api/auth'
 import { fetchUserDetail } from '@/api/user'
+import { getDesktopBridge } from '@/utils/desktop'
 import type { AuthMode, UserProfile } from '@/types/models'
 
 const STORAGE_KEY = 'nextmusic.auth'
@@ -16,12 +17,38 @@ interface PersistedAuth {
 export const GUEST_BLOCK_MESSAGE = '游客模式不支持该操作，请先登录'
 export const VIRTUAL_BLOCK_MESSAGE = '虚拟登录为只读模式，写入操作不可用'
 
+const VALID_MODES: AuthMode[] = ['none', 'user', 'guest', 'virtual']
+
+function parsePersisted(raw: unknown): PersistedAuth | null {
+  if (!raw || typeof raw !== 'object') return null
+  const parsed = raw as Partial<PersistedAuth>
+  if (!parsed.mode || !VALID_MODES.includes(parsed.mode)) return null
+  return {
+    mode: parsed.mode,
+    cookie: parsed.cookie,
+    profile: parsed.profile,
+    virtualUser: parsed.virtualUser,
+  }
+}
+
 function loadPersisted(): PersistedAuth {
+  // 桌面环境：主进程文件快照优先（userData 下 JSON，免疫 Chromium 存储层异常——
+  // Windows 上杀软/权限问题可能令 localStorage 每次退出即失），并回写 localStorage 保持一致
+  const snapshot = getDesktopBridge()?.persistedAuth
+  const fromBridge = parsePersisted(snapshot)
+  if (fromBridge) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(fromBridge))
+    } catch {
+      /* 存储异常时跳过回写 */
+    }
+    return fromBridge
+  }
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
-      const parsed = JSON.parse(raw) as PersistedAuth
-      if (['none', 'user', 'guest', 'virtual'].includes(parsed.mode)) return parsed
+      const parsed = parsePersisted(JSON.parse(raw))
+      if (parsed) return parsed
     }
   } catch {
     /* 忽略损坏数据 */
@@ -67,6 +94,10 @@ export const useAuthStore = defineStore('auth', {
       } catch {
         /* 忽略存储异常 */
       }
+      // 桌面环境镜像到主进程文件（异步、失败不阻塞本地持久化）
+      void getDesktopBridge()
+        ?.setPersistedAuth(data)
+        .catch(() => undefined)
     },
 
     /** 登录成功后应用账号信息 */

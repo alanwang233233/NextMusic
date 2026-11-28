@@ -27,6 +27,10 @@ declare const __APP_COMMIT__: string
 interface DesktopBridge {
   mainApiBase: string
   setGeneralUnblock(enabled: boolean): Promise<boolean>
+  /** 主进程持久化的登录态快照（启动期同步注入；纯 Web / 无快照时为 undefined） */
+  persistedAuth?: unknown
+  /** 登录态镜像到主进程文件（userData/nextmusic-auth.json） */
+  setPersistedAuth(data: unknown): Promise<boolean>
 }
 
 interface Window {

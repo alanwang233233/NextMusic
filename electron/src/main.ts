@@ -8,6 +8,7 @@ import { app, BrowserWindow, ipcMain, protocol, session, shell } from 'electron'
 import path from 'node:path'
 import { readFile } from 'node:fs/promises'
 import { startApiServer, probeFreePort } from './apiServer'
+import { registerAuthStoreIpc } from './authStore'
 
 /** app 协议承载 dist 静态资源（standard+secure 使其成为安全上下文，fetch/媒体可用）；必须 ready 前注册 */
 protocol.registerSchemesAsPrivileged([
@@ -145,6 +146,7 @@ app.on('second-instance', focusExistingWindow)
 
 app.whenReady().then(async () => {
   protocol.handle('app', serveDist)
+  registerAuthStoreIpc()
 
   ipcMain.handle('desktop:set-general-unblock', (_event, enabled: unknown) => {
     process.env.ENABLE_GENERAL_UNBLOCK = enabled === true ? 'true' : 'false'
