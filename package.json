@@ -1,7 +1,7 @@
 {
   "name": "next-music",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "main": "electron/dist/main.cjs",
   "author": "Allen Wang <wangzihao2010@outlook.com>",

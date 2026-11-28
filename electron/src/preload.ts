@@ -32,5 +32,6 @@ contextBridge.exposeInMainWorld('nextmusicDesktop', {
   mainApiBase,
   persistedAuth,
   setGeneralUnblock: (enabled: boolean) => ipcRenderer.invoke('desktop:set-general-unblock', enabled),
-  setPersistedAuth: (data: unknown) => ipcRenderer.invoke('desktop:auth-set', JSON.stringify(data)),
+  // 渲染层必须传 JSON 字符串（reactive Proxy 过不了 contextBridge 克隆），主进程侧再校验
+  setPersistedAuth: (raw: string) => ipcRenderer.invoke('desktop:auth-set', raw),
 })

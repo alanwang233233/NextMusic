@@ -94,9 +94,11 @@ export const useAuthStore = defineStore('auth', {
       } catch {
         /* 忽略存储异常 */
       }
-      // 桌面环境镜像到主进程文件（异步、失败不阻塞本地持久化）
+      // 桌面环境镜像到主进程文件（异步、失败不阻塞本地持久化）。
+      // 必须在本侧序列化成字符串再过桥：data.profile 是 Vue reactive Proxy，
+      // contextBridge 的结构化克隆无法处理（"An object could not be cloned."）
       void getDesktopBridge()
-        ?.setPersistedAuth(data)
+        ?.setPersistedAuth(JSON.stringify(data))
         .catch(() => undefined)
     },
 

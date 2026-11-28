@@ -65,17 +65,21 @@ describe('auth store 桌面持久化（主进程文件镜像）', () => {
     expect(store.cookie).toBe('MUSIC_U=xyz')
   })
 
-  it('persist() 镜像写入主进程（桥接存在时）', async () => {
+  it('persist() 镜像写入主进程：载荷必须是 JSON 字符串（contextBridge 无法克隆 Vue reactive Proxy）', async () => {
     const { setPersistedAuth } = stubBridge(undefined)
     const store = useAuthStore()
     store.mode = 'user'
     store.cookie = 'MUSIC_U=abc'
+    store.profile = { userId: 100, nickname: '测试用户', avatarUrl: 'https://p1.music.126.net/a.jpg' }
     store.persist()
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).cookie).toBe('MUSIC_U=abc')
     expect(setPersistedAuth).toHaveBeenCalledTimes(1)
-    const mirrored = setPersistedAuth.mock.calls[0]?.[0] as { mode: string; cookie?: string }
+    const payload = setPersistedAuth.mock.calls[0]?.[0]
+    expect(typeof payload).toBe('string')
+    const mirrored = JSON.parse(payload as string) as { mode: string; cookie?: string; profile?: { nickname: string } }
     expect(mirrored.mode).toBe('user')
     expect(mirrored.cookie).toBe('MUSIC_U=abc')
+    expect(mirrored.profile?.nickname).toBe('测试用户')
   })
 
   it('persist() 镜像失败不阻塞本地持久化', () => {

@@ -103,11 +103,11 @@ test.describe('桌面冒烟', () => {
       })
       expect(unblockResult).toBe(true)
 
-      // 登录态镜像写路径：桥接 setPersistedAuth → 主进程文件落盘（双模式均验证）
+      // 登录态镜像写路径：桥接 setPersistedAuth（JSON 字符串载荷）→ 主进程文件落盘（双模式均验证）
       await page.evaluate(async () => {
-        const b = (window as { nextmusicDesktop?: { setPersistedAuth?: (data: unknown) => Promise<boolean> } }).nextmusicDesktop
+        const b = (window as { nextmusicDesktop?: { setPersistedAuth?: (raw: string) => Promise<boolean> } }).nextmusicDesktop
         if (!b?.setPersistedAuth) throw new Error('桥接缺少 setPersistedAuth')
-        await b.setPersistedAuth({ mode: 'user', cookie: 'MUSIC_U=smoke-mirror' })
+        await b.setPersistedAuth(JSON.stringify({ mode: 'user', cookie: 'MUSIC_U=smoke-mirror' }))
       })
       expect(waitForFileContent(authFile, 'MUSIC_U=smoke-mirror'), '登录态镜像应写入主进程文件').toBe(true)
 

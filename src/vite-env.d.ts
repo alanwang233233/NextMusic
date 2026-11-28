@@ -26,8 +26,8 @@ interface DesktopBridge {
   setGeneralUnblock(enabled: boolean): Promise<boolean>
   /** 主进程持久化的登录态快照（启动期同步注入；纯 Web / 无快照时为 undefined） */
   persistedAuth?: unknown
-  /** 登录态镜像到主进程文件（userData/nextmusic-auth.json） */
-  setPersistedAuth(data: unknown): Promise<boolean>
+  /** 登录态镜像到主进程文件（userData/nextmusic-auth.json）；载荷为 JSON 字符串 */
+  setPersistedAuth(raw: string): Promise<boolean>
 }
 
 interface Window {
