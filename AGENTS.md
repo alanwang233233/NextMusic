@@ -11,6 +11,9 @@ npm run typecheck    # 仅类型检查
 npm run test         # Vitest：tests/unit + tests/components
 npm run test:e2e     # Playwright E2E（先 npm run build！preview 服务的是 dist）
 npm run test:visual  # 视觉截图（同样依赖最新 dist）
+npm run typecheck:electron  # Electron 主进程/预加载类型检查（改 electron/src 后必跑）
+npm run desktop:dev         # 桌面开发（vite dev + Electron）
+npm run desktop:build       # 桌面打包（Web 构建 → electron esbuild → electron-builder，参数透传）
 ```
 
 - 环境变量：复制 `.env.example` 为 `.env.local`。`VITE_MAIN_API` **必填**（缺失时 `requireMainApiBase()` 直接抛错）；`VITE_OUTER_API`、`VITE_OUTER_IP` 可选。
@@ -29,6 +32,14 @@ npm run test:visual  # 视觉截图（同样依赖最新 dist）
 - 相似歌手接口 `/simi/artist` 需**正式登录**（游客 cookie 同样 301）；未登录态由 ArtistView 展示登录引导，勿改为匿名调用。
 - `src/stores/auth.ts`：登录态 `user | guest | virtual | none`；写操作（喜欢/收藏/歌单编辑/FM 垃圾桶）必须先过 `assertWrite()` / `guardWrite()`（`src/composables/useWriteAction.ts`），游客与虚拟模式一律拦截；**下载不属于写操作**，各模式均放行。
 - 路由守卫在 `src/router/index.ts`（`meta.requiresUser` → 跳登录页）。
+
+## 桌面版（Electron）
+
+- `electron/src/`（main.ts / preload.ts / apiServer.ts）经 esbuild 打成 **CJS（`.cjs`）**（根 package.json `"type": "module"`，且 api-enhanced 是 CJS 包），改后先 `npm run typecheck:electron`；打包配置在 `electron-builder.yml`。
+- 主进程内嵌 api-enhanced（`@neteasecloudmusicapienhanced/api`）：启动序 = 设 `ENABLE_GENERAL_UNBLOCK=true` → require 包主入口（其 main.js 预建空 `anonymous_token`）→ `require('.../generateConfig')` 引导（匿名 token / xeapi key，**缺失则本地 `/song/url/v1` JSON 直链 404，预缓存路径失效**）→ `serveNcmApi`。端口必须先 `net` 探测再传入——**不能传 0**（包内 falsy 回退 3000）。
+- 渲染层检测桌面环境只认 `getDesktopBridge()`（`src/utils/desktop.ts`，即 preload 注入的 `window.nextmusicDesktop`）；主 API 地址三级解析：设置覆盖（惰性，`bindMainApiOverride`）→ 桥接注入（模块加载期）→ `VITE_MAIN_API`。**纯 Web 下前两级不存在，行为不得改变**；桌面 UI 一律条件渲染。
+- preload 经 `additionalArguments`（`--nextmusic-main-api-base=`）拿**同步 string**；改用 IPC invoke 会把渲染层同步链路异步化，禁止。
+- `desktop:build` 强制置空 `VITE_MAIN_API`（防私有地址入包）；`tests/e2e/desktop.smoke.spec.ts` 为桌面冒烟（无 electron/dist 自动 skip；`DESKTOP_EXECUTABLE` 验证 asar、`DESKTOP_NET_CHECK=1` 需外网）；桌面 spec 必须串行（单实例锁）。
 
 ## 硬性约定
 

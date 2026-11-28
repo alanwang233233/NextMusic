@@ -62,6 +62,27 @@ npm run dev
 
 > 注意：`VITE_MAIN_API` 是构建时变量，修改后需要重新触发部署才会生效。
 
+## 桌面版（Electron）
+
+桌面版在应用内嵌本地运行 [api-enhanced](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced)（监听 `127.0.0.1` 随机端口），无需自部署远程实例；可在 **设置 → 桌面版** 中切换播放设备（扬声器/耳机）、覆盖主 API 为远程地址、开关解灰。纯 Web 版与部署流程完全不受影响。
+
+```bash
+# 桌面开发（vite dev + electron）
+npm run desktop:dev
+
+# 打包当前平台（未签名）
+npm run desktop:build            # 透传参数，如 --dir 仅出未打包目录
+
+# 显式指定平台
+npm run desktop:build:mac        # dmg + zip（arm64/x64）
+npm run desktop:build:win        # NSIS 安装包
+npm run desktop:build:linux      # AppImage + deb
+```
+
+- 应用图标为占位生成（`scripts/generate-icon.mjs` → `assets/icon.png`），替换 `assets/icon.png` 即可（electron-builder 自动转 icns/ico）
+- 推送 `desktop-v*` 标签触发 GitHub Actions 三平台构建并发布 Release（`.github/workflows/desktop.yml`）
+- 桌面冒烟测试：`npx playwright test tests/e2e/desktop.smoke.spec.ts`（需先 `npm run build && npm run desktop:build:electron`；`DESKTOP_EXECUTABLE` 指向打包后可执行文件可验证 asar，`DESKTOP_NET_CHECK=1` 需外网）
+
 ## 可用脚本
 
 | 命令 | 说明 |
@@ -72,6 +93,9 @@ npm run dev
 | `npm run test` | Vitest 单元测试 + 组件测试 |
 | `npm run test:unit` / `npm run test:components` | 分别运行单元 / 组件测试 |
 | `npm run test:e2e` | Playwright E2E（需先 `npm run build`，跑的是 `vite preview` 服务的 `dist`） |
+| `npm run desktop:dev` | 桌面开发（vite dev server + Electron） |
+| `npm run desktop:build` / `desktop:build:mac\|win\|linux` | 桌面打包（强制置空 `VITE_MAIN_API`，Web 构建 → Electron esbuild → electron-builder） |
+| `npm run typecheck:electron` | Electron 主进程/预加载类型检查（`tsc -p electron/tsconfig.json`） |
 | `npm run test:visual` | 视觉截图测试（同样依赖最新 `dist`） |
 | `npm run e2e:report` | 查看 Playwright 报告 |
 
