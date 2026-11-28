@@ -40,7 +40,10 @@ jobs:
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y flatpak flatpak-builder
       # 桌面构建内含 Web 构建（强制置空 VITE_MAIN_API，防私有地址入包）
+      # Linux 的 flatpak 打包子命令输出走 debug('flatpak-bundler')，默认不可见，开启以便失败时诊断
       - run: npm run ${{ matrix.script }}
+        env:
+          DEBUG: ${{ runner.os == 'Linux' && 'flatpak-bundler' || '' }}
       - uses: actions/upload-artifact@v4
         with:
           name: NextMusic-${{ matrix.artifact }}
