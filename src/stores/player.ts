@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { getEngine, type UrlResolution } from '@/player/engine'
+import { applyPersistedAudioOutput } from '@/composables/useAudioOutput'
 import { nextSongPreloader } from '@/player/precache'
 import { useAuthStore } from './auth'
 import { useSettingsStore } from './settings'
@@ -185,6 +186,8 @@ export const usePlayerStore = defineStore('player', {
       const settings = useSettingsStore()
       const engine = getEngine(engineCallbacksForStore())
       engine.setVolume(this.volume)
+      // 恢复持久化的播放输出设备（仅桌面 setSinkId 环境生效，失败静默）
+      void applyPersistedAudioOutput(engine)
       try {
         // 命中预缓存则直接使用已缓存地址（blob: 数据级缓存或直链，第 0 步，零网络请求），失败后引擎继续常规降级链
         // loop 模式：复用保留条目（同一首歌跨循环只 fetch 一次），并清理切歌残留；其余模式维持取用即删
