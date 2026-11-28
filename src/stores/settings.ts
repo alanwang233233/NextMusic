@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
 import { nextSongPreloader } from '@/player/precache'
+import { bindMainApiOverride, normalizeApiBase } from '@/api/http'
+import { getDesktopBridge } from '@/utils/desktop'
 import type { QualityLevel } from '@/types/models'
 
 const STORAGE_KEY = 'nextmusic.settings'
@@ -8,9 +10,13 @@ interface PersistedSettings {
   quality: QualityLevel
   downloadQuality: QualityLevel
   showTranslation: boolean
+  /** 桌面端主 API 覆盖地址（'' = 使用内置本地服务；纯 Web 无效） */
+  mainApiBaseOverride?: string
+  /** 桌面端解灰开关（默认开启） */
+  generalUnblock?: boolean
 }
 
-function load(): PersistedSettings {
+function load(): Required<PersistedSettings> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
@@ -19,12 +25,20 @@ function load(): PersistedSettings {
         quality: (parsed.quality as QualityLevel) || 'exhigh',
         downloadQuality: (parsed.downloadQuality as QualityLevel) || 'exhigh',
         showTranslation: parsed.showTranslation !== false,
+        mainApiBaseOverride: (parsed.mainApiBaseOverride || '').trim(),
+        generalUnblock: parsed.generalUnblock !== false,
       }
     }
   } catch {
     /* 忽略损坏的本地数据 */
   }
-  return { quality: 'exhigh', downloadQuality: 'exhigh', showTranslation: true }
+  return {
+    quality: 'exhigh',
+    downloadQuality: 'exhigh',
+    showTranslation: true,
+    mainApiBaseOverride: '',
+    generalUnblock: true,
+  }
 }
 
 export const useSettingsStore = defineStore('settings', {
@@ -44,11 +58,38 @@ export const useSettingsStore = defineStore('settings', {
       this.showTranslation = !this.showTranslation
       this.persist()
     },
+    /** 桌面端主 API 覆盖：规范化（去空白/尾斜杠）后写入，空串即恢复内置本地服务（立即生效，惰性求值） */
+    setMainApiBaseOverride(url: string) {
+      this.mainApiBaseOverride = normalizeApiBase(url)
+      this.persist()
+    },
+    /** 桌面端解灰开关：持久化并同步给主进程（env 为每请求读取，可热切换） */
+    setGeneralUnblock(enabled: boolean) {
+      this.generalUnblock = enabled
+      void getDesktopBridge()
+        ?.setGeneralUnblock(enabled)
+        .catch(() => undefined)
+      this.persist()
+    },
+    /** App.vue 启动时调用一次：绑定主 API 覆盖 provider 并同步解灰初值（仅桌面环境有实际动作） */
+    bindDesktopBridge() {
+      if (!getDesktopBridge()) return
+      bindMainApiOverride(() => this.mainApiBaseOverride)
+      void getDesktopBridge()
+        ?.setGeneralUnblock(this.generalUnblock)
+        .catch(() => undefined)
+    },
     persist() {
       try {
         localStorage.setItem(
           STORAGE_KEY,
-          JSON.stringify({ quality: this.quality, downloadQuality: this.downloadQuality, showTranslation: this.showTranslation }),
+          JSON.stringify({
+            quality: this.quality,
+            downloadQuality: this.downloadQuality,
+            showTranslation: this.showTranslation,
+            mainApiBaseOverride: this.mainApiBaseOverride,
+            generalUnblock: this.generalUnblock,
+          }),
         )
       } catch {
         /* 存储不可用时静默 */

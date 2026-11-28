@@ -46,14 +46,14 @@ export function bindMainApiOverride(fn: OverrideProvider | null): void {
 }
 
 /** 去首尾空白与结尾斜杠，保证 `${base}/path` 拼接安全 */
-function normalizeBase(url: string): string {
+export function normalizeApiBase(url: string): string {
   return url.trim().replace(/\/+$/, '')
 }
 
 /** 未配置主 API 地址时给出明确的运行时错误（桌面环境文案不同） */
 export function requireMainApiBase(): string {
   const override = overrideProvider?.()
-  if (override && override.trim()) return normalizeBase(override)
+  if (override && override.trim()) return normalizeApiBase(override)
   if (!MAIN_API_BASE) {
     const message = getDesktopBridge()
       ? '本地 API 服务未就绪，请重启应用'
