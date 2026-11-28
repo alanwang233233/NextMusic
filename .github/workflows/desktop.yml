@@ -57,6 +57,9 @@ jobs:
       - run: npm run build
       - run: npm run desktop:build:electron
       - run: npx playwright install --with-deps chromium
+      # ubuntu-24.04 runner 的 SUID sandbox 配置损坏（microsoft/playwright#34251），
+      # Electron 渲染进程 sandbox 需要非特权 user namespace
+      - run: sudo sysctl -w kernel.unprivileged_userns_clone=1
       - run: npx playwright test tests/e2e/desktop.smoke.spec.ts
       - run: npm run test
 

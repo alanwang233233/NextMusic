@@ -25,7 +25,10 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 }
 
-const DIST_DIR = path.join(app.getAppPath(), 'dist')
+// dist 定位基于编译产物自身位置（electron/dist/main.cjs 的上两级），
+// 打包后 __dirname 位于 app.asar 内同样成立；app.getAppPath() 在非打包直启时
+// 返回脚本目录（electron/dist）而非仓库根，会导致 404 白屏
+const DIST_DIR = path.resolve(__dirname, '../../dist')
 const MAIN_API_BASE_FLAG = '--nextmusic-main-api-base='
 
 const MIME_TYPES: Record<string, string> = {

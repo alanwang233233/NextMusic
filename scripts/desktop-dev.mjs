@@ -8,6 +8,8 @@ import process from 'node:process'
 const VITE_URL = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173'
 const vitePort = new URL(VITE_URL).port || '5173'
 const children = []
+// Windows 上 npx 是 .cmd shim（spawn 裸名 ENOENT / Node ≥20.12 EINVAL），显式解析
+const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx'
 
 function run(command, args, env = {}) {
   const child = spawn(command, args, { stdio: 'inherit', env: { ...process.env, ...env } })
@@ -44,7 +46,7 @@ process.on('SIGTERM', () => {
   process.exit(143)
 })
 
-const vite = run('npx', ['vite', '--port', vitePort, '--strictPort'])
+const vite = run(npxCmd, ['vite', '--port', vitePort, '--strictPort'])
 try {
   await waitForServer(VITE_URL)
 } catch (err) {
@@ -54,7 +56,7 @@ try {
 }
 
 // electron 在 node_modules devDependencies 中，直接用其可执行文件启动主进程
-run('npx', ['electron', 'electron/dist/main.cjs'], { VITE_DEV_SERVER_URL: VITE_URL })
+run(npxCmd, ['electron', 'electron/dist/main.cjs'], { VITE_DEV_SERVER_URL: VITE_URL })
 
 vite.on('exit', (code) => {
   cleanup()

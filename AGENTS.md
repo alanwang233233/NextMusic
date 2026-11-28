@@ -39,7 +39,7 @@ npm run desktop:build       # 桌面打包（Web 构建 → electron esbuild →
 - 主进程内嵌 api-enhanced（`@neteasecloudmusicapienhanced/api`）：启动序 = 设 `ENABLE_GENERAL_UNBLOCK=true` → require 包主入口（其 main.js 预建空 `anonymous_token`）→ `require('.../generateConfig')` 引导（匿名 token / xeapi key，**缺失则本地 `/song/url/v1` JSON 直链 404，预缓存路径失效**）→ `serveNcmApi`。端口必须先 `net` 探测再传入——**不能传 0**（包内 falsy 回退 3000）。
 - 渲染层检测桌面环境只认 `getDesktopBridge()`（`src/utils/desktop.ts`，即 preload 注入的 `window.nextmusicDesktop`）；主 API 地址三级解析：设置覆盖（惰性，`bindMainApiOverride`）→ 桥接注入（模块加载期）→ `VITE_MAIN_API`。**纯 Web 下前两级不存在，行为不得改变**；桌面 UI 一律条件渲染。
 - preload 经 `additionalArguments`（`--nextmusic-main-api-base=`）拿**同步 string**；改用 IPC invoke 会把渲染层同步链路异步化，禁止。
-- `desktop:build` 强制置空 `VITE_MAIN_API`（防私有地址入包）；`tests/e2e/desktop.smoke.spec.ts` 为桌面冒烟（无 electron/dist 自动 skip；`DESKTOP_EXECUTABLE` 验证 asar、`DESKTOP_NET_CHECK=1` 需外网）；桌面 spec 必须串行（单实例锁）。
+- `desktop:build` 强制置空 `VITE_MAIN_API`（防私有地址入包）；`tests/e2e/desktop.smoke.spec.ts` 为桌面冒烟（无 electron/dist 自动 skip；`DESKTOP_EXECUTABLE` 验证 asar、`DESKTOP_NET_CHECK=1` 需外网）；桌面 spec 必须串行（单实例锁）。**跑过 `desktop:build` 后 dist 是"桌面模式"（无主 API 回退），Web E2E 前必须重新 `npm run build`**（否则全量失败，表现为所有页面无数据）。
 
 ## 硬性约定
 

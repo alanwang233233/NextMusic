@@ -26,6 +26,8 @@ test.describe('桌面冒烟', () => {
       : await _electron.launch({ args: ['electron/dist/main.cjs'], timeout: 90_000 })
     try {
       const window = await app.firstWindow()
+      // UI 真实加载（非 404/白屏）：SPA 挂载点必须出现——同时覆盖 dev 直启与 asar 两种模式
+      await window.waitForSelector('#app', { state: 'attached', timeout: 30_000 })
       const bridge = await window.evaluate(() =>
         Promise.resolve((window as { nextmusicDesktop?: { mainApiBase?: string; setGeneralUnblock?: unknown } }).nextmusicDesktop),
       )
